@@ -601,6 +601,227 @@ app.get('/api/admin/completed-courses', authenticateToken, async (req, res) => {
     }
 });
 
+// --- Admin/Org: Upload Students for a Course ---
+app.post('/api/courses/:courseId/students', authenticateToken, async (req, res) => {
+    const { courseId } = req.params;
+    const { students } = req.body; // Expecting an array of student objects [{firstName, lastName, email}]
+
+    // Basic validation
+    if (!students || !Array.isArray(students) || students.length === 0) {
+        return res.status(400).json({ success: false, message: 'Student data is missing or invalid.' });
+    }
+    if (!courseId) {
+         return res.status(400).json({ success: false, message: 'Course ID is missing.' });
+    }
+
+    // TODO: Add authorization check - ensure the user (Org or Admin) has rights to modify this course
+
+    const client = await db.getClient(); // Use a client for transaction
+    try {
+        await client.query('BEGIN');
+
+        // Optional: Delete existing students for this course before adding new ones?
+        // await client.query('DELETE FROM Students WHERE CourseID = $1', [courseId]);
+
+        let insertedCount = 0;
+        for (const student of students) {
+            // Validate individual student data
+            if (!student.firstName || !student.lastName) {
+                console.warn('Skipping student with missing name:', student);
+                continue; // Skip this student if name is missing
+            }
+            
+            // Use correct column names from schema
+            const result = await client.query(
+                `INSERT INTO Students (CourseID, FirstName, LastName, Email) 
+                 VALUES ($1, $2, $3, $4) 
+                 ON CONFLICT (CourseID, Email) DO NOTHING -- Example: Skip duplicates based on CourseID and Email`,
+                [courseId, student.firstName, student.lastName, student.email || null]
+            );
+            insertedCount += result.rowCount; // Increment if row was inserted (or potentially updated if using DO UPDATE)
+        }
+
+        await client.query('COMMIT');
+        res.json({ success: true, message: `${insertedCount} students uploaded successfully.` });
+
+    } catch (err) {
+        await client.query('ROLLBACK');
+        console.error(`Error uploading students for course ${courseId}:`, err);
+        res.status(500).json({ success: false, message: 'Failed to upload students.' });
+    } finally {
+        client.release();
+    }
+});
+
+// --- Instructor: Get Today's Scheduled Classes ---
+app.get('/api/instructor/todays-classes', authenticateToken, async (req, res) => {
+    try {
+        const userId = req.user.userid;
+        // Find InstructorID
+        const instructorResult = await db.query('SELECT InstructorID FROM Instructors WHERE UserID = $1', [userId]);
+        if (instructorResult.rows.length === 0) {
+            return res.status(403).json({ success: false, message: 'User is not an instructor' });
+        }
+        const instructorId = instructorResult.rows[0].instructorid;
+        
+        // Get current date in YYYY-MM-DD format (consider timezone)
+        const today = new Date().toISOString().split('T')[0]; 
+
+        const result = await db.query(`
+            SELECT 
+                c.CourseID, c.DateScheduled, c.CourseNumber, c.Location, c.Status, 
+                o.OrganizationName, ct.CourseTypeName, c.StudentsRegistered
+            FROM Courses c
+            JOIN Organizations o ON c.OrganizationID = o.OrganizationID
+            JOIN CourseTypes ct ON c.CourseTypeID = ct.CourseTypeID
+            WHERE c.InstructorID = $1 AND c.DateScheduled = $2 AND c.Status = 'Scheduled' 
+            ORDER BY c.DateScheduled ASC
+        `, [instructorId, today]);
+        
+        res.json({ success: true, classes: result.rows });
+
+    } catch (err) {
+        console.error("Error fetching today's classes:", err);
+        res.status(500).json({ success: false, message: 'Failed to fetch today\'s classes' });
+    }
+});
+
+// --- Get Students for a Specific Course ---
+app.get('/api/courses/:courseId/students', authenticateToken, async (req, res) => {
+    const { courseId } = req.params;
+    try {
+        // TODO: Add authorization check - ensure user (instructor/admin/org) can view students for this course
+        const result = await db.query(
+            'SELECT StudentID, FirstName, LastName, Email, Attendance FROM Students WHERE CourseID = $1 ORDER BY LastName, FirstName',
+            [courseId]
+        );
+        res.json({ success: true, students: result.rows });
+    } catch (err) {
+        console.error(`Error fetching students for course ${courseId}:`, err);
+        res.status(500).json({ success: false, message: 'Failed to fetch students' });
+    }
+});
+
+// --- Instructor: Update Student Attendance ---
+app.put('/api/students/:studentId/attendance', authenticateToken, async (req, res) => {
+    const { studentId } = req.params;
+    const { attended } = req.body; // Expecting { attended: boolean }
+
+    if (typeof attended !== 'boolean') {
+         return res.status(400).json({ success: false, message: 'Invalid attendance value provided.' });
+    }
+
+    try {
+        // TODO: Add authorization check - ensure instructor is assigned to the course this student belongs to
+        const result = await db.query(
+            'UPDATE Students SET Attendance = $1, UpdatedAt = CURRENT_TIMESTAMP WHERE StudentID = $2 RETURNING StudentID',
+            [attended, studentId]
+        );
+        if (result.rowCount === 0) {
+            return res.status(404).json({ success: false, message: 'Student not found.' });
+        }
+        res.json({ success: true, message: 'Attendance updated.' });
+    } catch (err) {
+        console.error(`Error updating attendance for student ${studentId}:`, err);
+        res.status(500).json({ success: false, message: 'Failed to update attendance.' });
+    }
+});
+
+// --- Instructor: Add Student to Course (During Attendance) ---
+app.post('/api/courses/:courseId/add-student', authenticateToken, async (req, res) => {
+    const { courseId } = req.params;
+    const { firstName, lastName, email } = req.body; // Expecting { firstName, lastName, email? }
+
+    if (!firstName || !lastName) {
+        return res.status(400).json({ success: false, message: 'First and last name are required.' });
+    }
+     if (!courseId) {
+         return res.status(400).json({ success: false, message: 'Course ID is missing.' });
+    }
+
+    // TODO: Add authorization check - ensure instructor is assigned to this course
+
+    try {
+        // Insert student, potentially handle duplicates based on CourseID/Email if needed
+        const result = await db.query(
+            `INSERT INTO Students (CourseID, FirstName, LastName, Email, Attendance) 
+             VALUES ($1, $2, $3, $4, FALSE) -- Default attendance to false
+             RETURNING *`,
+            [courseId, firstName, lastName, email || null]
+        );
+        res.status(201).json({ success: true, message: 'Student added successfully.', student: result.rows[0] });
+    } catch (err) {
+        console.error(`Error adding student to course ${courseId}:`, err);
+        // Handle potential duplicate errors if constraints exist
+        if (err.code === '23505') { 
+             return res.status(409).json({ success: false, message: 'Student with this email may already exist for this course.' });
+        }
+        res.status(500).json({ success: false, message: 'Failed to add student.' });
+    }
+});
+
+// --- Instructor: Mark Course as Completed ---
+app.put('/api/courses/:courseId/complete', authenticateToken, async (req, res) => {
+    const { courseId } = req.params;
+    const userId = req.user.userid;
+
+    try {
+        // Find InstructorID first
+        const instructorResult = await db.query('SELECT InstructorID FROM Instructors WHERE UserID = $1', [userId]);
+        if (instructorResult.rows.length === 0) {
+            return res.status(403).json({ success: false, message: 'User is not an instructor' });
+        }
+        const instructorId = instructorResult.rows[0].instructorid;
+
+        // Update course status only if it belongs to this instructor and is 'Scheduled'
+        const result = await db.query(
+            `UPDATE Courses SET Status = 'Completed', UpdatedAt = CURRENT_TIMESTAMP 
+             WHERE CourseID = $1 AND InstructorID = $2 AND Status = 'Scheduled' RETURNING CourseID`,
+            [courseId, instructorId]
+        );
+
+        if (result.rowCount === 0) {
+            // Could be course not found, not assigned to this instructor, or not in 'Scheduled' status
+            return res.status(404).json({ success: false, message: 'Course not found, not assigned to you, or not currently scheduled.' });
+        }
+        res.json({ success: true, message: 'Course marked as completed.' });
+
+    } catch (err) {
+        console.error(`Error completing course ${courseId}:`, err);
+        res.status(500).json({ success: false, message: 'Failed to mark course as completed.' });
+    }
+});
+
+// --- Instructor: Get Completed Courses (Archive) ---
+app.get('/api/instructor/completed-classes', authenticateToken, async (req, res) => {
+     try {
+        const userId = req.user.userid;
+        const instructorResult = await db.query('SELECT InstructorID FROM Instructors WHERE UserID = $1', [userId]);
+        if (instructorResult.rows.length === 0) {
+            return res.status(403).json({ success: false, message: 'User is not an instructor' });
+        }
+        const instructorId = instructorResult.rows[0].instructorid;
+
+        const result = await db.query(`
+            SELECT 
+                c.CourseID, c.DateScheduled, c.CourseNumber, c.Location, c.Status, 
+                o.OrganizationName, ct.CourseTypeName, c.StudentsRegistered 
+                -- Add attendance count later if needed
+            FROM Courses c
+            JOIN Organizations o ON c.OrganizationID = o.OrganizationID
+            JOIN CourseTypes ct ON c.CourseTypeID = ct.CourseTypeID
+            WHERE c.InstructorID = $1 AND c.Status = 'Completed'
+            ORDER BY c.DateScheduled DESC
+        `, [instructorId]);
+        
+        res.json({ success: true, courses: result.rows });
+
+    } catch (err) {
+        console.error("Error fetching completed classes:", err);
+        res.status(500).json({ success: false, message: 'Failed to fetch completed classes' });
+    }
+});
+
 app.listen(port, () => {
     console.log(`Server running on port ${port}`);
 }); 
