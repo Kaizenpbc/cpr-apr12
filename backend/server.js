@@ -8,8 +8,8 @@ const port = process.env.PORT || 3001;
 app.use(cors());
 app.use(express.json());
 
-// Authentication middleware
-const authenticateToken = (req, res, next) => {
+// Authentication middleware - Make it async to query DB
+const authenticateToken = async (req, res, next) => {
     const authHeader = req.headers['authorization'];
     const token = authHeader && authHeader.split(' ')[1];
 
@@ -17,10 +17,30 @@ const authenticateToken = (req, res, next) => {
         return res.status(401).json({ success: false, message: 'No token provided' });
     }
 
-    // For now, we'll just check if the token exists in the request
-    // In a real application, you would verify the JWT token here
-    req.user = { userid: token }; // This is temporary - replace with actual user data from JWT
-    next();
+    try {
+        // Assume token is the UserID for now
+        const userId = token;
+        req.user = { userid: userId }; // Set basic user info
+
+        // Query to find associated OrganizationID based on UserID
+        // Adjust the table and column names if your schema is different
+        const orgQueryResult = await db.query(
+            'SELECT OrganizationID FROM Users WHERE UserID = $1',
+            [userId]
+        );
+
+        if (orgQueryResult.rows.length > 0 && orgQueryResult.rows[0].organizationid) {
+            // If an OrganizationID is found for this user, add it to req.user
+            req.user.organizationId = orgQueryResult.rows[0].organizationid;
+        }
+        // If no OrgID found, req.user.organizationId will remain undefined.
+        // Route-specific checks (like in /api/courses/request) will handle authorization.
+
+        next(); // Proceed to the next middleware or route handler
+    } catch (err) {
+        console.error('Authentication error:', err);
+        return res.status(500).json({ success: false, message: 'Internal error during authentication' });
+    }
 };
 
 // Test database connection
@@ -43,14 +63,12 @@ app.post('/api/auth/login', async (req, res) => {
 
     try {
         const result = await db.query(
-            'SELECT UserID, Username, Role, FirstName, LastName FROM Users WHERE Username = $1 AND Password = $2',
+            'SELECT UserID, Username, Role, FirstName, LastName, OrganizationID FROM Users WHERE Username = $1 AND Password = $2',
             [username, password]
         );
 
         if (result.rows.length > 0) {
             const user = result.rows[0];
-            // For now, we'll use the UserID as the token
-            // In a real application, you would generate a JWT token here
             const token = user.userid.toString();
             
             res.json({ 
@@ -60,7 +78,8 @@ app.post('/api/auth/login', async (req, res) => {
                     username: user.username,
                     role: user.role,
                     firstname: user.firstname,
-                    lastname: user.lastname
+                    lastname: user.lastname,
+                    organizationId: user.organizationid
                 },
                 token
             });
@@ -350,6 +369,72 @@ app.post('/api/instructor/classes', authenticateToken, async (req, res) => {
     } catch (error) {
         console.error('Error scheduling class:', error);
         res.status(500).json({ success: false, message: 'Failed to schedule class' });
+    }
+});
+
+// --- Course Types Endpoint ---
+app.get('/api/course-types', async (req, res) => {
+    try {
+        const result = await db.query('SELECT CourseTypeID, CourseTypeName FROM CourseTypes ORDER BY CourseTypeName');
+        res.json({ success: true, courseTypes: result.rows });
+    } catch (err) {
+        console.error('Error fetching course types:', err);
+        res.status(500).json({ success: false, message: 'Failed to fetch course types' });
+    }
+});
+
+// --- Request Course Endpoint (Organization) ---
+app.post('/api/courses/request', authenticateToken, async (req, res) => {
+    const { dateRequested, location, courseTypeId, registeredStudents, notes } = req.body;
+    const organizationId = req.user.organizationId; // <<< We need to add this to req.user
+
+    // --- TODO: Modify authenticateToken or add middleware --- 
+    // --- to fetch organizationId based on req.user.userid --- 
+    if (!organizationId) {
+        console.error('Organization ID not found for user:', req.user.userid);
+        return res.status(403).json({ success: false, message: 'User is not associated with an organization.' });
+    }
+    
+    if (!dateRequested || !location || !courseTypeId || registeredStudents === undefined) {
+        return res.status(400).json({ success: false, message: 'Missing required fields: dateRequested, location, courseTypeId, registeredStudents' });
+    }
+
+    try {
+        // Query for Organization NAME instead of non-existent code
+        const orgResult = await db.query('SELECT OrganizationName FROM Organizations WHERE OrganizationID = $1', [organizationId]);
+        
+        // Query for CourseType NAME instead of non-existent code
+        const typeResult = await db.query('SELECT CourseTypeName FROM CourseTypes WHERE CourseTypeID = $1', [courseTypeId]);
+        
+        if (orgResult.rows.length === 0 || typeResult.rows.length === 0) {
+            return res.status(400).json({ success: false, message: 'Invalid Organization or Course Type ID' });
+        }
+        
+        const datePart = new Date(dateRequested).toISOString().slice(0, 10).replace(/-/g, '');
+        const orgPart = orgResult.rows[0].organizationname.substring(0, 3).toUpperCase();
+        // Use first 3 chars of CourseType NAME for the code part
+        const typePart = typeResult.rows[0].coursetypename.substring(0, 3).toUpperCase();
+        const courseNumber = `${datePart}-${orgPart}-${typePart}`;
+
+        const result = await db.query(
+            `INSERT INTO Courses (OrganizationID, CourseTypeID, DateRequested, Location, StudentsRegistered, Notes, Status, CourseNumber)
+             VALUES ($1, $2, $3, $4, $5, $6, 'Pending', $7) RETURNING *`,
+            [organizationId, courseTypeId, dateRequested, location, registeredStudents, notes || null, courseNumber]
+        );
+
+        res.status(201).json({ success: true, message: 'Course requested successfully!', course: result.rows[0] });
+    } catch (err) {
+        // Enhanced logging
+        console.error('--- ERROR IN POST /api/courses/request ---');
+        console.error('Timestamp:', new Date().toISOString());
+        console.error('Error Type:', typeof err);
+        console.error('Error Object:', err); // Log the full error object
+        if (err instanceof Error) {
+            console.error('Error Stack:', err.stack); // Log stack trace if it's an Error instance
+        }
+        console.error('--- END ERROR DETAILS ---');
+        
+        res.status(500).json({ success: false, message: 'Failed to request course' });
     }
 });
 
