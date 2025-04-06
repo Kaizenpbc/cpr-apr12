@@ -24,6 +24,7 @@ import {
 import ScheduleCourseForm from '../forms/ScheduleCourseForm';
 import OrganizationCoursesTable from '../tables/OrganizationCoursesTable';
 import StudentUploadDialog from '../dialogs/StudentUploadDialog';
+import ViewStudentsDialog from '../dialogs/ViewStudentsDialog';
 
 const drawerWidth = 240;
 
@@ -36,6 +37,8 @@ const OrganizationPortal = () => {
     const [coursesError, setCoursesError] = useState('');
     const [showUploadDialog, setShowUploadDialog] = useState(false);
     const [selectedCourseForUpload, setSelectedCourseForUpload] = useState(null);
+    const [showViewStudentsDialog, setShowViewStudentsDialog] = useState(false);
+    const [selectedCourseForView, setSelectedCourseForView] = useState(null);
     const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
 
     const handleLogout = () => {
@@ -94,8 +97,9 @@ const OrganizationPortal = () => {
     };
 
     const handleViewStudentsClick = (courseId) => {
-        console.log("View students clicked for course:", courseId);
-        alert("View students functionality not yet implemented.");
+        console.log("[OrgPortal] handleViewStudentsClick CALLED with courseId:", courseId);
+        setSelectedCourseForView(courseId);
+        setShowViewStudentsDialog(true);
     };
     
     const handleUploadDialogClose = () => {
@@ -103,11 +107,16 @@ const OrganizationPortal = () => {
         setSelectedCourseForUpload(null);
     };
 
+    const handleViewStudentsDialogClose = () => {
+        setShowViewStudentsDialog(false);
+        setSelectedCourseForView(null);
+    };
+
     const handleUploadComplete = (message) => {
         // Show success message from the upload dialog
         setSnackbar({ open: true, message: message, severity: 'success' });
-        // Optionally, refresh the courses list to show updated student count?
-        // loadOrgCourses(); 
+        // Refresh the courses list to show updated student count
+        loadOrgCourses(); 
     };
     // --- End Action Handlers ---
 
@@ -208,6 +217,15 @@ const OrganizationPortal = () => {
                 />
             )}
             
+            {/* View Students Dialog */}
+            {showViewStudentsDialog && (
+                <ViewStudentsDialog
+                    open={showViewStudentsDialog}
+                    onClose={handleViewStudentsDialogClose}
+                    courseId={selectedCourseForView}
+                />
+            )}
+            
             {/* Snackbar for upload success message */}
             <Snackbar
                 open={snackbar.open}
@@ -218,6 +236,7 @@ const OrganizationPortal = () => {
                 <Alert 
                     onClose={() => setSnackbar({ ...snackbar, open: false })} 
                     severity={snackbar.severity} 
+                    variant="filled"
                     sx={{ width: '100%' }}
                 >
                     {snackbar.message}

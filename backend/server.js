@@ -616,7 +616,8 @@ app.post('/api/courses/:courseId/students', authenticateToken, async (req, res) 
 
     // TODO: Add authorization check - ensure the user (Org or Admin) has rights to modify this course
 
-    const client = await db.getClient(); // Use a client for transaction
+    // Get a client from the pool for transaction using the correct export
+    const client = await db.pool.connect(); // Use db.pool.connect()
     try {
         await client.query('BEGIN');
 
@@ -625,20 +626,18 @@ app.post('/api/courses/:courseId/students', authenticateToken, async (req, res) 
 
         let insertedCount = 0;
         for (const student of students) {
-            // Validate individual student data
             if (!student.firstName || !student.lastName) {
                 console.warn('Skipping student with missing name:', student);
-                continue; // Skip this student if name is missing
+                continue; 
             }
             
             // Use correct column names from schema
             const result = await client.query(
                 `INSERT INTO Students (CourseID, FirstName, LastName, Email) 
-                 VALUES ($1, $2, $3, $4) 
-                 ON CONFLICT (CourseID, Email) DO NOTHING -- Example: Skip duplicates based on CourseID and Email`,
+                 VALUES ($1, $2, $3, $4)`,
                 [courseId, student.firstName, student.lastName, student.email || null]
             );
-            insertedCount += result.rowCount; // Increment if row was inserted (or potentially updated if using DO UPDATE)
+            insertedCount += result.rowCount; 
         }
 
         await client.query('COMMIT');
@@ -649,7 +648,7 @@ app.post('/api/courses/:courseId/students', authenticateToken, async (req, res) 
         console.error(`Error uploading students for course ${courseId}:`, err);
         res.status(500).json({ success: false, message: 'Failed to upload students.' });
     } finally {
-        client.release();
+        client.release(); // Release the client back to the pool
     }
 });
 

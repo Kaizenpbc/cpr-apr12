@@ -28,6 +28,7 @@ import InstructorDashboardTable from '../tables/InstructorDashboardTable';
 import PendingCoursesTable from '../tables/PendingCoursesTable';
 import ScheduledCoursesTable from '../tables/ScheduledCoursesTable';
 import CompletedCoursesTable from '../tables/CompletedCoursesTable';
+import ViewStudentsDialog from '../dialogs/ViewStudentsDialog';
 
 const drawerWidth = 240;
 
@@ -47,6 +48,8 @@ const CourseAdminPortal = () => {
     const [completedCourses, setCompletedCourses] = useState([]);
     const [isLoadingCompleted, setIsLoadingCompleted] = useState(false);
     const [completedError, setCompletedError] = useState('');
+    const [showViewStudentsDialog, setShowViewStudentsDialog] = useState(false);
+    const [selectedCourseForView, setSelectedCourseForView] = useState(null);
 
     const handleLogout = () => {
         logout();
@@ -156,20 +159,22 @@ const CourseAdminPortal = () => {
     const handleScheduleCourseClick = (course) => {
         console.log("Schedule course clicked:", course);
         alert("Schedule functionality not yet implemented.");
-        // TODO: Open a modal or navigate to a scheduling page/component
-        // This component would need instructor availability data
     };
 
     const handleViewStudentsClick = (courseId) => {
-        console.log("View students clicked for course:", courseId);
-        alert("View students functionality not yet implemented.");
-        // TODO: Open a modal or navigate to a student view page/component
+        console.log("[AdminPortal] handleViewStudentsClick CALLED with courseId:", courseId);
+        setSelectedCourseForView(courseId);
+        setShowViewStudentsDialog(true);
+    };
+
+    const handleViewStudentsDialogClose = () => {
+        setShowViewStudentsDialog(false);
+        setSelectedCourseForView(null);
     };
 
     const handleBillClick = (courseId) => {
         console.log("Bill course clicked:", courseId);
         alert("Billing functionality not yet implemented.");
-        // TODO: Implement billing logic/navigation
     };
 
     const renderSelectedView = () => {
@@ -196,7 +201,7 @@ const CourseAdminPortal = () => {
                     <PendingCoursesTable 
                         courses={pendingCourses} 
                         onScheduleClick={handleScheduleCourseClick} 
-                        onViewStudentsClick={handleViewStudentsClick} 
+                        onViewStudentsClick={handleViewStudentsClick}
                     />
                 );
             case 'scheduled':
@@ -210,7 +215,7 @@ const CourseAdminPortal = () => {
                 return (
                     <ScheduledCoursesTable 
                         courses={scheduledCourses} 
-                        onViewStudentsClick={handleViewStudentsClick} 
+                        onViewStudentsClick={handleViewStudentsClick}
                     />
                 );
             case 'completed':
@@ -340,6 +345,14 @@ const CourseAdminPortal = () => {
                     {renderSelectedView()}
                 </Container>
             </Box>
+
+            {showViewStudentsDialog && (
+                <ViewStudentsDialog
+                    open={showViewStudentsDialog}
+                    onClose={handleViewStudentsDialogClose}
+                    courseId={selectedCourseForView}
+                />
+            )}
         </Box>
     );
 };

@@ -23,17 +23,11 @@ const formatDate = (dateString) => {
     }
 };
 
-const OrganizationCoursesTable = ({ courses }) => {
+const OrganizationCoursesTable = ({ courses, onUploadStudentsClick, onViewStudentsClick }) => {
 
     if (!courses || courses.length === 0) {
         return <Typography sx={{ mt: 2 }}>No courses found for this organization.</Typography>;
     }
-
-    const handleUploadStudents = (courseId) => {
-        // TODO: Implement student upload logic/navigation
-        console.log("Upload students for course:", courseId);
-        alert('Student Upload functionality not yet implemented.');
-    };
 
     const handleViewStudents = (courseId) => {
         // TODO: Implement view students logic/navigation
@@ -78,12 +72,10 @@ const OrganizationCoursesTable = ({ courses }) => {
                             <TableCell align="center">
                                 <Box sx={{ display: 'flex', gap: 1, justifyContent: 'center' }}>
                                     <Tooltip title="Upload Student List">
-                                        {/* Disable button based on status if needed */}
                                         <Button 
                                             variant="outlined" 
                                             size="small"
-                                            onClick={() => handleUploadStudents(course.courseid)}
-                                            // disabled={course.status !== 'Pending' && course.status !== 'Scheduled'} // Example condition
+                                            onClick={() => onUploadStudentsClick(course.courseid)}
                                         >
                                             Upload
                                         </Button>
@@ -92,10 +84,12 @@ const OrganizationCoursesTable = ({ courses }) => {
                                         <Button 
                                             variant="outlined" 
                                             size="small"
-                                            onClick={() => handleViewStudents(course.courseid)}
-                                            // disabled={!course.studentsregistered > 0} // Example condition
+                                            onClick={() => {
+                                                console.log(`[OrgCoursesTable] View Students button clicked for courseId: ${course.courseid}`);
+                                                onViewStudentsClick(course.courseid);
+                                            }}
                                         >
-                                            View
+                                            View Students
                                         </Button>
                                     </Tooltip>
                                 </Box>
