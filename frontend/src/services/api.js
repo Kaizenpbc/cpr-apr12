@@ -318,4 +318,31 @@ export const getInstructorCompletedCourses = async () => {
     }
 };
 
+// Admin: Get All Instructors
+export const getAllInstructors = async () => {
+    try {
+        const response = await api.get('/admin/instructors');
+        if (response && response.success) {
+            return response.instructors;
+        } else {
+            throw new Error(response?.message || 'Failed to fetch instructors');
+        }
+    } catch (error) {
+        console.error('Error fetching instructors:', error);
+        throw error?.message ? new Error(error.message) : error;
+    }
+};
+
+// Admin: Schedule a Course
+export const scheduleCourseAdmin = async (courseId, scheduleData) => {
+    // scheduleData = { instructorId, dateScheduled }
+    try {
+        const response = await api.put(`/admin/schedule-course/${courseId}`, scheduleData);
+        return response; // Expect { success: true, message: ..., course: ... }
+    } catch (error) {
+        console.error(`Error scheduling course ${courseId}:`, error);
+        throw error?.message ? new Error(error.message) : error;
+    }
+};
+
 export default api; 

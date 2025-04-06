@@ -10,8 +10,10 @@ import {
     Button,
     Box,
     Typography,
-    Tooltip
+    Tooltip,
+    TableSortLabel
 } from '@mui/material';
+import { visuallyHidden } from '@mui/utils';
 
 const formatDate = (dateString) => {
     if (!dateString) return '-';
@@ -22,11 +24,15 @@ const formatDate = (dateString) => {
     }
 };
 
-const CompletedCoursesTable = ({ courses, onViewStudentsClick, onBillClick }) => {
+const CompletedCoursesTable = ({ courses, onViewStudentsClick, onBillClick, sortOrder, sortBy, onSortRequest }) => {
 
     if (!courses || courses.length === 0) {
         return <Typography sx={{ mt: 2 }}>No completed courses found.</Typography>;
     }
+
+    const createSortHandler = (property) => (event) => {
+        onSortRequest(property);
+    };
 
     return (
         <TableContainer component={Paper} sx={{ mt: 2 }}>
@@ -34,15 +40,63 @@ const CompletedCoursesTable = ({ courses, onViewStudentsClick, onBillClick }) =>
                 <TableHead>
                     <TableRow>
                         <TableCell>System Date</TableCell>
-                        <TableCell>Date Completed</TableCell>
+                        <TableCell
+                            key="date"
+                            sortDirection={sortBy === 'date' ? sortOrder : false}
+                        >
+                            <TableSortLabel
+                                active={sortBy === 'date'}
+                                direction={sortBy === 'date' ? sortOrder : 'asc'}
+                                onClick={createSortHandler('date')}
+                            >
+                                Date Completed
+                                {sortBy === 'date' ? (
+                                    <Box component="span" sx={visuallyHidden}>
+                                        {sortOrder === 'desc' ? 'sorted descending' : 'sorted ascending'}
+                                    </Box>
+                                ) : null}
+                            </TableSortLabel>
+                        </TableCell>
                         <TableCell>Course Number</TableCell>
-                        <TableCell>Organization</TableCell>
+                        <TableCell
+                            key="organization"
+                            sortDirection={sortBy === 'organization' ? sortOrder : false}
+                        >
+                            <TableSortLabel
+                                active={sortBy === 'organization'}
+                                direction={sortBy === 'organization' ? sortOrder : 'asc'}
+                                onClick={createSortHandler('organization')}
+                            >
+                                Organization
+                                {sortBy === 'organization' ? (
+                                    <Box component="span" sx={visuallyHidden}>
+                                        {sortOrder === 'desc' ? 'sorted descending' : 'sorted ascending'}
+                                    </Box>
+                                ) : null}
+                            </TableSortLabel>
+                        </TableCell>
                         <TableCell>Location</TableCell>
-                        <TableCell>Registered</TableCell>
-                        <TableCell>Attendance</TableCell>
+                        <TableCell>Students Registered</TableCell>
+                        <TableCell>Students Attendance</TableCell>
                         <TableCell>Notes</TableCell>
                         <TableCell>Status</TableCell>
-                        <TableCell>Instructor</TableCell>
+                        <TableCell
+                            key="instructor"
+                            sortDirection={sortBy === 'instructor' ? sortOrder : false}
+                        >
+                            <TableSortLabel
+                                active={sortBy === 'instructor'}
+                                direction={sortBy === 'instructor' ? sortOrder : 'asc'}
+                                onClick={createSortHandler('instructor')}
+                            >
+                                Instructor
+                                {sortBy === 'instructor' ? (
+                                    <Box component="span" sx={visuallyHidden}>
+                                        {sortOrder === 'desc' ? 'sorted descending' : 'sorted ascending'}
+                                    </Box>
+                                ) : null}
+                            </TableSortLabel>
+                        </TableCell>
                         <TableCell align="center">Actions</TableCell>
                     </TableRow>
                 </TableHead>

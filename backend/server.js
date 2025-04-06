@@ -1,9 +1,23 @@
 const express = require('express');
 const cors = require('cors');
 const db = require('./db');
+const http = require('http'); // Import Node's http module
+const { Server } = require("socket.io"); // Import socket.io Server
 
 const app = express();
+const server = http.createServer(app); // Create HTTP server from Express app
+// Attach socket.io to the HTTP server
+const io = new Server(server, {
+  cors: {
+    origin: "http://localhost:3000", // Allow frontend origin
+    methods: ["GET", "POST", "PUT", "DELETE"] // Allowed methods
+  }
+});
+
 const port = process.env.PORT || 3001;
+
+// Simple in-memory store for user sockets (Replace with Redis/DB in production)
+const userSockets = new Map(); 
 
 app.use(cors());
 app.use(express.json());
@@ -187,36 +201,33 @@ app.get('/api/instructors/:id/schedule', async (req, res) => {
 });
 
 // Get organization's courses
-app.get('/api/organizations/:id/courses', async (req, res) => {
+app.get('/api/organizations/:id/courses', authenticateToken, async (req, res) => {
     try {
         const result = await db.query(`
             SELECT 
-                c.CourseID,
-                c.CourseNumber,
-                c.DateRequested,
-                c.DateScheduled,
-                c.Location,
-                c.Status,
+                c.CourseID, c.CreatedAt AS SystemDate, c.CourseNumber, c.DateRequested, c.DateScheduled, 
+                c.Location, c.Status, c.Notes, c.StudentsRegistered,
                 ct.CourseTypeName,
+                o.OrganizationName,
                 CONCAT(u.FirstName, ' ', u.LastName) as InstructorName,
-                COUNT(s.StudentID) as StudentCount
+                -- Calculate StudentsAttendance count
+                COUNT(CASE WHEN s.Attendance = TRUE THEN 1 END) as StudentsAttendance 
             FROM Courses c
             JOIN CourseTypes ct ON c.CourseTypeID = ct.CourseTypeID
+            JOIN Organizations o ON c.OrganizationID = o.OrganizationID
             LEFT JOIN Instructors i ON c.InstructorID = i.InstructorID
             LEFT JOIN Users u ON i.UserID = u.UserID
             LEFT JOIN Students s ON c.CourseID = s.CourseID
             WHERE c.OrganizationID = $1
             GROUP BY 
-                c.CourseID,
-                c.CourseNumber,
-                ct.CourseTypeName,
-                u.FirstName,
-                u.LastName
-            ORDER BY c.DateRequested ASC
+                c.CourseID, c.CreatedAt, c.CourseNumber, c.DateRequested, c.DateScheduled, c.Location, 
+                c.Status, c.Notes, c.StudentsRegistered, ct.CourseTypeName, o.OrganizationName, u.FirstName, u.LastName
+            ORDER BY c.DateRequested ASC 
         `, [req.params.id]);
         
         res.json({ success: true, courses: result.rows });
     } catch (err) {
+        console.error("Error fetching organization courses:", err);
         res.status(500).json({ success: false, error: err.message });
     }
 });
@@ -319,25 +330,43 @@ app.get('/api/instructor/availability', authenticateToken, async (req, res) => {
     }
 });
 
-// Scheduled Classes Endpoints
+// Scheduled Classes Endpoints (Corrected for Instructor Portal)
 app.get('/api/instructor/classes', authenticateToken, async (req, res) => {
     try {
-        const instructorId = req.user.userid;
+        const userId = req.user.userid; // Get UserID
+        // 1. Find InstructorID
+        const instructorResult = await db.query('SELECT InstructorID FROM Instructors WHERE UserID = $1', [userId]);
+        if (instructorResult.rows.length === 0) {
+            return res.json({ success: true, classes: [] }); // Return empty if not an instructor
+        }
+        const instructorId = instructorResult.rows[0].instructorid;
 
+        // 2. Query Courses table for this instructor where status is Scheduled
         const result = await db.query(`
             SELECT 
-                sc.*,
-                o.organizationname as "organizationName"
-            FROM scheduledclasses sc
-            JOIN organizations o ON sc.organizationid = o.organizationid
-            WHERE sc.instructorid = $1
-            ORDER BY sc.classdate DESC
+                c.CourseID, c.CourseNumber, c.DateScheduled, c.Location, c.Status,
+                c.StudentsRegistered,
+                c.Notes, 
+                o.OrganizationName, 
+                ct.CourseTypeName,
+                -- Calculate actual attendance count
+                COUNT(CASE WHEN s.Attendance = TRUE THEN 1 END) as StudentsAttendance
+            FROM Courses c
+            JOIN Organizations o ON c.OrganizationID = o.OrganizationID
+            JOIN CourseTypes ct ON c.CourseTypeID = ct.CourseTypeID
+            -- Join Students table to count attendance
+            LEFT JOIN Students s ON c.CourseID = s.CourseID 
+            WHERE c.InstructorID = $1 AND c.Status = 'Scheduled'
+            -- Group by all non-aggregated columns
+            GROUP BY c.CourseID, c.CourseNumber, c.DateScheduled, c.Location, c.Status, 
+                     c.StudentsRegistered, c.Notes, o.OrganizationName, ct.CourseTypeName
+            ORDER BY c.DateScheduled ASC 
         `, [instructorId]);
 
         res.json({ success: true, classes: result.rows });
     } catch (error) {
-        console.error('Error fetching classes:', error);
-        res.status(500).json({ success: false, message: 'Failed to fetch classes' });
+        console.error('Error fetching instructor scheduled classes:', error);
+        res.status(500).json({ success: false, message: 'Failed to fetch scheduled classes' });
     }
 });
 
@@ -710,19 +739,47 @@ app.put('/api/students/:studentId/attendance', authenticateToken, async (req, re
          return res.status(400).json({ success: false, message: 'Invalid attendance value provided.' });
     }
 
+    const client = await db.pool.connect(); // Get client for transaction
     try {
-        // TODO: Add authorization check - ensure instructor is assigned to the course this student belongs to
-        const result = await db.query(
-            'UPDATE Students SET Attendance = $1, UpdatedAt = CURRENT_TIMESTAMP WHERE StudentID = $2 RETURNING StudentID',
+        await client.query('BEGIN');
+        
+        // 1. Update the specific student's attendance
+        const updateResult = await client.query(
+            'UPDATE Students SET Attendance = $1, UpdatedAt = CURRENT_TIMESTAMP WHERE StudentID = $2 RETURNING CourseID',
             [attended, studentId]
         );
-        if (result.rowCount === 0) {
+
+        if (updateResult.rowCount === 0) {
+            await client.query('ROLLBACK');
             return res.status(404).json({ success: false, message: 'Student not found.' });
         }
-        res.json({ success: true, message: 'Attendance updated.' });
+
+        const courseId = updateResult.rows[0].courseid;
+
+        // 2. Recalculate the total attendance for the course
+        const attendanceCountResult = await client.query(
+            'SELECT COUNT(*) FROM Students WHERE CourseID = $1 AND Attendance = TRUE',
+            [courseId]
+        );
+        const newAttendanceCount = parseInt(attendanceCountResult.rows[0].count, 10);
+
+        await client.query('COMMIT');
+
+        // --- Emit WebSocket Event --- 
+        // Emit to all connected sockets (or could target Admins specifically if needed)
+        // For simplicity, emitting broadly for now.
+        console.log(`Emitting 'attendance_updated' for Course ${courseId} with count ${newAttendanceCount}`);
+        io.emit('attendance_updated', { courseId: courseId, newAttendanceCount: newAttendanceCount });
+        // --- End Emit WebSocket Event ---
+
+        res.json({ success: true, message: 'Attendance updated.', newAttendanceCount: newAttendanceCount });
+
     } catch (err) {
+        await client.query('ROLLBACK');
         console.error(`Error updating attendance for student ${studentId}:`, err);
         res.status(500).json({ success: false, message: 'Failed to update attendance.' });
+    } finally {
+        client.release();
     }
 });
 
@@ -821,6 +878,112 @@ app.get('/api/instructor/completed-classes', authenticateToken, async (req, res)
     }
 });
 
-app.listen(port, () => {
+// --- Admin: Get All Instructors ---
+app.get('/api/admin/instructors', authenticateToken, async (req, res) => {
+    try {
+        const result = await db.query(`
+            SELECT i.InstructorID, u.FirstName, u.LastName 
+            FROM Instructors i 
+            JOIN Users u ON i.UserID = u.UserID 
+            ORDER BY u.LastName, u.FirstName
+        `);
+        res.json({ success: true, instructors: result.rows });
+    } catch (err) {
+        console.error("Error fetching instructors:", err);
+        res.status(500).json({ success: false, message: 'Failed to fetch instructors' });
+    }
+});
+
+// --- Admin: Schedule a Pending Course ---
+app.put('/api/admin/schedule-course/:courseId', authenticateToken, async (req, res) => {
+    const { courseId } = req.params;
+    const { instructorId, dateScheduled } = req.body;
+
+    if (!instructorId || !dateScheduled) {
+        return res.status(400).json({ success: false, message: 'Instructor ID and Scheduled Date are required.' });
+    }
+
+    // Optional: Check if instructor is available on dateScheduled here if needed
+    // Requires fetching instructor availability
+
+    try {
+        const result = await db.query(
+            `UPDATE Courses 
+             SET InstructorID = $1, DateScheduled = $2, Status = 'Scheduled', UpdatedAt = CURRENT_TIMESTAMP 
+             WHERE CourseID = $3 AND Status = 'Pending' 
+             RETURNING *`, 
+            [instructorId, dateScheduled, courseId]
+        );
+
+        if (result.rowCount === 0) {
+            return res.status(404).json({ success: false, message: 'Pending course not found or could not be updated.' });
+        }
+
+        const updatedCourse = result.rows[0];
+
+        // --- Emit WebSocket Event --- 
+        try {
+             // Find the UserID associated with the InstructorID
+            const userRes = await db.query('SELECT UserID FROM Instructors WHERE InstructorID = $1', [instructorId]);
+            if (userRes.rows.length > 0) {
+                const instructorUserId = userRes.rows[0].userid.toString(); // Ensure string key
+                console.log(`[Schedule Course] Found Instructor UserID: ${instructorUserId}`); // Log UserID
+                const targetSocketId = userSockets.get(instructorUserId);
+                console.log(`[Schedule Course] Looked up socket ID for UserID ${instructorUserId}. Found: ${targetSocketId}`); // Log SocketID lookup result
+                if (targetSocketId) {
+                    console.log(`[Schedule Course] Emitting 'course_assigned' to Socket ${targetSocketId} for Course ${courseId}`);
+                    io.to(targetSocketId).emit('course_assigned', updatedCourse);
+                } else {
+                     console.log(`[Schedule Course] Could not find active socket for Instructor UserID: ${instructorUserId}. Sockets map:`, userSockets);
+                }
+            } else {
+                 console.log(`[Schedule Course] Could not find UserID for InstructorID: ${instructorId}`);
+            }
+        } catch (emitError) {
+            console.error('[Schedule Course] Error querying user or emitting socket event:', emitError);
+            // Don't fail the main request, just log the socket error
+        }
+        // --- End Emit WebSocket Event ---
+
+        res.json({ success: true, message: 'Course scheduled successfully!', course: updatedCourse });
+
+    } catch (err) {
+        console.error(`Error scheduling course ${courseId}:`, err);
+        res.status(500).json({ success: false, message: 'Failed to schedule course.' });
+    }
+});
+
+// --- Socket.IO Connection Handling ---
+io.on('connection', (socket) => {
+  console.log('Socket connected:', socket.id);
+
+  // Handler for client identifying itself (e.g., after login)
+  socket.on('identify', (userId) => {
+    if (userId) {
+      console.log(`Socket ${socket.id} identified as UserID: ${userId}`);
+      userSockets.set(userId.toString(), socket.id); // Store mapping (ensure userId is string)
+      // console.log('Current user sockets:', userSockets);
+    } else {
+       console.log(`Socket ${socket.id} tried to identify without userId.`);
+    }
+  });
+
+  socket.on('disconnect', () => {
+    console.log('Socket disconnected:', socket.id);
+    // Find and remove user from mapping on disconnect
+    for (let [userId, socketId] of userSockets.entries()) {
+      if (socketId === socket.id) {
+        userSockets.delete(userId);
+        console.log(`Removed UserID ${userId} from socket map.`);
+        break;
+      }
+    }
+    // console.log('Current user sockets:', userSockets);
+  });
+});
+// --- End Socket.IO --- 
+
+// Start the HTTP server instead of the Express app directly
+server.listen(port, () => { // Changed from app.listen to server.listen
     console.log(`Server running on port ${port}`);
 }); 

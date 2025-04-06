@@ -45,7 +45,7 @@ import InstructorArchiveTable from '../tables/InstructorArchiveTable';
 const drawerWidth = 240;
 
 const InstructorPortal = () => {
-    const { user, logout } = useAuth();
+    const { user, logout, socket } = useAuth();
     const navigate = useNavigate();
     const [selectedView, setSelectedView] = useState('availability');
     const [selectedDate, setSelectedDate] = useState(null);
@@ -176,7 +176,30 @@ const InstructorPortal = () => {
     useEffect(() => {
         console.log('[useEffect] Running effect, calling loadInitialData.');
         loadInitialData();
-    }, [loadInitialData]);
+
+        if (socket) {
+            console.log('[InstructorPortal] Setting up socket listener for course_assigned');
+            
+            const handleCourseAssigned = (updatedCourse) => {
+                console.log('[Socket Event] course_assigned received:', updatedCourse);
+                showSnackbar(`New course scheduled: ${updatedCourse.coursenumber}`, 'info');
+                // Refresh the main data to update the My Classes view
+                loadInitialData(); 
+                // If currently on attendance view, might need to refresh that too
+                if (selectedView === 'attendance') {
+                     loadTodaysClasses();
+                }
+            };
+
+            socket.on('course_assigned', handleCourseAssigned);
+
+            // Cleanup listener on component unmount or socket change
+            return () => {
+                console.log('[InstructorPortal] Cleaning up socket listener for course_assigned');
+                socket.off('course_assigned', handleCourseAssigned);
+            };
+        }
+    }, [loadInitialData, socket, showSnackbar, selectedView, loadTodaysClasses]);
 
     useEffect(() => {
         console.log(`[useEffect View Change] View changed to: ${selectedView}`);
@@ -190,6 +213,11 @@ const InstructorPortal = () => {
         } else if (selectedView === 'archive') {
             loadArchivedCourses();
         } else if (selectedView === 'classes') {
+            console.log('[useEffect View Change] Reloading initial data for My Classes view...');
+            loadInitialData();
+        } else if (selectedView === 'availability') {
+            // Optionally reload initial data if it could have changed significantly
+            // loadInitialData();
         }
     }, [selectedView, loadInitialData, loadTodaysClasses, loadArchivedCourses]);
 
@@ -465,25 +493,43 @@ const InstructorPortal = () => {
                             <TableCell>Organization</TableCell>
                             <TableCell>Location</TableCell>
                             <TableCell>Class Type</TableCell>
-                            <TableCell>Registered</TableCell>
-                            <TableCell>Attended</TableCell>
+                            <TableCell>Students Registered</TableCell>
+                            <TableCell>Students Attendance</TableCell>
                             <TableCell>Notes</TableCell>
                             <TableCell>Status</TableCell>
                         </TableRow>
                     </TableHead>
                     <TableBody>
                         {sortedDates.map((availableDateStr, index) => {
-                            const matchingClass = actualClasses.find(c => 
-                                new Date(c.classdate).toDateString() === availableDateStr
-                            );
+                            // Find if there's a class scheduled on this available date
+                            // --- Robust Date Comparison --- 
+                            const availableDateObj = new Date(availableDateStr);
+                            const availableYear = availableDateObj.getFullYear();
+                            const availableMonth = availableDateObj.getMonth();
+                            const availableDay = availableDateObj.getDate();
 
+                            const matchingClass = actualClasses.find(c => {
+                                if (!c.datescheduled) return false; // Skip if class has no scheduled date
+                                try {
+                                    const classDateObj = new Date(c.datescheduled);
+                                    return classDateObj.getFullYear() === availableYear &&
+                                           classDateObj.getMonth() === availableMonth &&
+                                           classDateObj.getDate() === availableDay;
+                                } catch (e) {
+                                    console.error('Error parsing class date for comparison:', c.datescheduled, e);
+                                    return false;
+                                }
+                            });
+                            // --- End Robust Date Comparison ---
+
+                            // Determine row data based on whether a class matches
                             const rowData = matchingClass ? {
-                                date: new Date(matchingClass.classdate).toLocaleDateString(),
-                                org: matchingClass.organizationName || '-',
+                                date: new Date(matchingClass.datescheduled).toLocaleDateString(),
+                                org: matchingClass.organizationname || '-',
                                 loc: matchingClass.location || '-',
-                                type: matchingClass.classtype || '-',
-                                reg: matchingClass.registeredstudents ?? '-',
-                                att: matchingClass.attendance ?? '-',
+                                type: matchingClass.coursetypename || '-',
+                                reg: matchingClass.studentsregistered ?? '-',
+                                att: matchingClass.studentsattendance ?? '-',
                                 notes: matchingClass.notes || '-',
                                 status: matchingClass.status || 'Scheduled'
                             } : {

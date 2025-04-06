@@ -37,8 +37,8 @@ const ScheduledCoursesTable = ({ courses, onViewStudentsClick }) => {
                         <TableCell>Course Number</TableCell>
                         <TableCell>Organization</TableCell>
                         <TableCell>Location</TableCell>
-                        <TableCell>Registered</TableCell>
-                        <TableCell>Attendance</TableCell>
+                        <TableCell>Students Registered</TableCell>
+                        <TableCell>Students Attendance</TableCell>
                         <TableCell>Notes</TableCell>
                         <TableCell>Status</TableCell>
                         <TableCell>Instructor</TableCell>

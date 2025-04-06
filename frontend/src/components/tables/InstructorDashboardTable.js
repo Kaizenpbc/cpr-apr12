@@ -7,8 +7,11 @@ import {
     TableHead,
     TableRow,
     Paper,
-    Typography
+    Typography,
+    TableSortLabel,
+    Box
 } from '@mui/material';
+import { visuallyHidden } from '@mui/utils';
 
 // Helper function to format date string
 const formatDate = (dateString) => {
@@ -20,46 +23,97 @@ const formatDate = (dateString) => {
     }
 };
 
-const InstructorDashboardTable = ({ data }) => {
+const InstructorDashboardTable = ({ data, sortOrder, sortBy, onSortRequest }) => {
 
     if (!data || data.length === 0) {
         return <Typography sx={{ mt: 2 }}>No instructor availability or scheduled classes found.</Typography>;
     }
+
+    const createSortHandler = (property) => (event) => {
+        onSortRequest(property);
+    };
 
     return (
         <TableContainer component={Paper} sx={{ mt: 2 }}>
             <Table stickyHeader aria-label="instructor dashboard table">
                 <TableHead>
                     <TableRow>
-                        <TableCell>Instructor Name</TableCell>
-                        <TableCell>Date</TableCell>
-                        <TableCell>Status</TableCell>
+                        <TableCell
+                            key="instructorName"
+                            sortDirection={sortBy === 'instructorName' ? sortOrder : false}
+                        >
+                            <TableSortLabel
+                                active={sortBy === 'instructorName'}
+                                direction={sortBy === 'instructorName' ? sortOrder : 'asc'}
+                                onClick={createSortHandler('instructorName')}
+                            >
+                                Instructor Name
+                                {sortBy === 'instructorName' ? (
+                                    <Box component="span" sx={visuallyHidden}>
+                                        {sortOrder === 'desc' ? 'sorted descending' : 'sorted ascending'}
+                                    </Box>
+                                ) : null}
+                            </TableSortLabel>
+                        </TableCell>
+                        <TableCell
+                            key="date"
+                            sortDirection={sortBy === 'date' ? sortOrder : false}
+                        >
+                            <TableSortLabel
+                                active={sortBy === 'date'}
+                                direction={sortBy === 'date' ? sortOrder : 'asc'}
+                                onClick={createSortHandler('date')}
+                            >
+                                Date
+                                {sortBy === 'date' ? (
+                                    <Box component="span" sx={visuallyHidden}>
+                                        {sortOrder === 'desc' ? 'sorted descending' : 'sorted ascending'}
+                                    </Box>
+                                ) : null}
+                            </TableSortLabel>
+                        </TableCell>
                         <TableCell>Organization</TableCell>
                         <TableCell>Location</TableCell>
                         <TableCell>Students Registered</TableCell>
-                        <TableCell>Students Attendance</TableCell> {/* Still placeholder */}
+                        <TableCell>Students Attendance</TableCell>
                         <TableCell>Notes</TableCell>
+                        <TableCell
+                            key="status"
+                            sortDirection={sortBy === 'status' ? sortOrder : false}
+                        >
+                            <TableSortLabel
+                                active={sortBy === 'status'}
+                                direction={sortBy === 'status' ? sortOrder : 'asc'}
+                                onClick={createSortHandler('status')}
+                            >
+                                Status
+                                {sortBy === 'status' ? (
+                                    <Box component="span" sx={visuallyHidden}>
+                                        {sortOrder === 'desc' ? 'sorted descending' : 'sorted ascending'}
+                                    </Box>
+                                ) : null}
+                            </TableSortLabel>
+                        </TableCell>
                     </TableRow>
                 </TableHead>
                 <TableBody>
                     {data.map((item) => (
                         <TableRow 
-                            key={item.id} // Use the combined ID from backend
+                            key={item.id}
                             hover
                             sx={{ 
                                 '&:last-child td, &:last-child th': { border: 0 },
-                                // Optional: Highlight 'Available' status
                                 bgcolor: item.status === 'Available' ? '#fffde7' : 'inherit' 
                             }}
                         >
                             <TableCell>{item.instructorName || '-'}</TableCell>
                             <TableCell>{formatDate(item.date)}</TableCell>
-                            <TableCell>{item.status || '-'}</TableCell>
                             <TableCell>{item.organizationName || '-'}</TableCell>
                             <TableCell>{item.location || '-'}</TableCell>
                             <TableCell align="center">{item.studentsRegistered ?? '-'}</TableCell>
                             <TableCell align="center">{item.studentsAttendance ?? '-'}</TableCell>
                             <TableCell>{item.notes || '-'}</TableCell>
+                            <TableCell>{item.status || '-'}</TableCell>
                         </TableRow>
                     ))}
                 </TableBody>

@@ -40,8 +40,7 @@ const PendingCoursesTable = ({ courses, onScheduleClick, onViewStudentsClick }) 
                         <TableCell>Course Number</TableCell>
                         <TableCell>Organization</TableCell>
                         <TableCell>Location</TableCell>
-                        <TableCell>Registered</TableCell>
-                        <TableCell>Attendance</TableCell> {/* Placeholder */}
+                        <TableCell>Students Registered</TableCell>
                         <TableCell>Notes</TableCell>
                         <TableCell>Status</TableCell>
                         <TableCell align="center">Actions</TableCell>
@@ -60,7 +59,6 @@ const PendingCoursesTable = ({ courses, onScheduleClick, onViewStudentsClick }) 
                             <TableCell>{course.organizationname || '-'}</TableCell>
                             <TableCell>{course.location || '-'}</TableCell>
                             <TableCell align="center">{course.studentsregistered ?? '-'}</TableCell>
-                            <TableCell align="center">{'-'}</TableCell> {/* Placeholder for Attendance */}
                             <TableCell>{course.notes || '-'}</TableCell>
                             <TableCell>{course.status || '-'}</TableCell>
                             <TableCell align="center">

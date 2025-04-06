@@ -13,7 +13,11 @@ import {
     Divider,
     CircularProgress,
     Alert,
-    // Add other MUI components as needed
+    Snackbar,
+    Select, MenuItem, FormControl, InputLabel,
+    TextField,
+    Button,
+    TableSortLabel
 } from '@mui/material';
 import {
     Dashboard as DashboardIcon,
@@ -29,11 +33,12 @@ import PendingCoursesTable from '../tables/PendingCoursesTable';
 import ScheduledCoursesTable from '../tables/ScheduledCoursesTable';
 import CompletedCoursesTable from '../tables/CompletedCoursesTable';
 import ViewStudentsDialog from '../dialogs/ViewStudentsDialog';
+import ScheduleCourseDialog from '../dialogs/ScheduleCourseDialog';
 
 const drawerWidth = 240;
 
 const CourseAdminPortal = () => {
-    const { user, logout } = useAuth();
+    const { user, logout, socket } = useAuth();
     const navigate = useNavigate();
     const [selectedView, setSelectedView] = useState('instructors');
     const [instructorData, setInstructorData] = useState([]);
@@ -50,6 +55,24 @@ const CourseAdminPortal = () => {
     const [completedError, setCompletedError] = useState('');
     const [showViewStudentsDialog, setShowViewStudentsDialog] = useState(false);
     const [selectedCourseForView, setSelectedCourseForView] = useState(null);
+    const [showScheduleDialog, setShowScheduleDialog] = useState(false);
+    const [selectedCourseForSchedule, setSelectedCourseForSchedule] = useState(null);
+    const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
+    const [allInstructors, setAllInstructors] = useState([]);
+    const [selectedInstructorFilter, setSelectedInstructorFilter] = useState('');
+    const [selectedDateFilter, setSelectedDateFilter] = useState('');
+    const [pendingDateFilter, setPendingDateFilter] = useState('');
+    const [scheduledInstructorFilter, setScheduledInstructorFilter] = useState('');
+    const [scheduledDateFilter, setScheduledDateFilter] = useState('');
+    const [instructorSortOrder, setInstructorSortOrder] = useState('asc');
+    const [instructorSortBy, setInstructorSortBy] = useState('date');
+    const [completedSortOrder, setCompletedSortOrder] = useState('desc');
+    const [completedSortBy, setCompletedSortBy] = useState('date');
+
+    // --- Define showSnackbar helper ---
+    const showSnackbar = useCallback((message, severity = 'success') => {
+        setSnackbar({ open: true, message, severity });
+    }, []); // Depends only on stable setter
 
     const handleLogout = () => {
         logout();
@@ -140,6 +163,20 @@ const CourseAdminPortal = () => {
         }
     }, []);
 
+    const loadAllInstructors = useCallback(async () => {
+        try {
+            const data = await api.getAllInstructors();
+            setAllInstructors(data || []);
+        } catch (err) {
+            console.error('Error loading instructors for filter:', err);
+            setAllInstructors([]);
+        }
+    }, []);
+
+    useEffect(() => {
+        loadAllInstructors();
+    }, [loadAllInstructors]);
+
     useEffect(() => {
         if (selectedView === 'instructors') {
             console.log('[useEffect] Loading instructor data...');
@@ -154,11 +191,57 @@ const CourseAdminPortal = () => {
             console.log('[useEffect] Loading completed courses...');
             loadCompletedCourses();
         }
-    }, [selectedView, loadInstructorData, loadPendingCourses, loadScheduledCourses, loadCompletedCourses]);
+    }, [selectedView, loadInstructorData, loadPendingCourses, loadScheduledCourses, loadCompletedCourses, loadAllInstructors]);
+
+    useEffect(() => {
+        if (!socket) return; // Don't run if socket isn't ready
+
+        console.log('[AdminPortal] Setting up socket listener for attendance_updated');
+        
+        const handleAttendanceUpdate = ({ courseId, newAttendanceCount }) => {
+            console.log(`[Socket Event] attendance_updated received for Course ${courseId}:`, newAttendanceCount);
+            
+            // Update state for all relevant course lists
+            setInstructorData(prev => prev.map(item => 
+                item.id === `course-${courseId}` ? { ...item, studentsAttendance: newAttendanceCount } : item
+            ));
+            setScheduledCourses(prev => prev.map(course => 
+                course.courseid === courseId ? { ...course, studentsAttendance: newAttendanceCount } : course
+            ));
+             setCompletedCourses(prev => prev.map(course => 
+                course.courseid === courseId ? { ...course, studentsAttendance: newAttendanceCount } : course
+            ));
+            // No need to update pending courses as they shouldn't have attendance yet
+
+            showSnackbar(`Attendance updated for course ${courseId}`, 'info');
+        };
+
+        socket.on('attendance_updated', handleAttendanceUpdate);
+
+        // Cleanup listener
+        return () => {
+            console.log('[AdminPortal] Cleaning up socket listener for attendance_updated');
+            socket.off('attendance_updated', handleAttendanceUpdate);
+        };
+
+    }, [socket, showSnackbar]);
 
     const handleScheduleCourseClick = (course) => {
         console.log("Schedule course clicked:", course);
-        alert("Schedule functionality not yet implemented.");
+        setSelectedCourseForSchedule(course);
+        setShowScheduleDialog(true);
+    };
+
+    const handleScheduleDialogClose = () => {
+        setShowScheduleDialog(false);
+        setSelectedCourseForSchedule(null);
+    };
+
+    const handleCourseSuccessfullyScheduled = (updatedCourse) => {
+        console.log("Course scheduled successfully in portal:", updatedCourse);
+        setSnackbar({ open: true, message: 'Course scheduled successfully!', severity: 'success' });
+        loadPendingCourses();
+        loadScheduledCourses();
     };
 
     const handleViewStudentsClick = (courseId) => {
@@ -177,49 +260,262 @@ const CourseAdminPortal = () => {
         alert("Billing functionality not yet implemented.");
     };
 
+    const handleInstructorFilterChange = (event) => {
+        setSelectedInstructorFilter(event.target.value);
+    };
+
+    const handleDateFilterChange = (event) => {
+        setSelectedDateFilter(event.target.value);
+    };
+
+    const handlePendingDateFilterChange = (event) => {
+        setPendingDateFilter(event.target.value);
+    };
+
+    const handleScheduledInstructorFilterChange = (event) => {
+        setScheduledInstructorFilter(event.target.value);
+    };
+
+    const handleScheduledDateFilterChange = (event) => {
+        setScheduledDateFilter(event.target.value);
+    };
+
+    const handleInstructorSortRequest = (property) => {
+        const isAsc = instructorSortBy === property && instructorSortOrder === 'asc';
+        setInstructorSortOrder(isAsc ? 'desc' : 'asc');
+        setInstructorSortBy(property);
+    };
+
+    const handleCompletedSortRequest = (property) => {
+        const isAsc = completedSortBy === property && completedSortOrder === 'asc';
+        setCompletedSortOrder(isAsc ? 'desc' : 'asc');
+        setCompletedSortBy(property);
+    };
+
     const renderSelectedView = () => {
-        console.log(`[renderSelectedView] Rendering view: ${selectedView}`); // Log which view is rendering
+        console.log(`[renderSelectedView] Rendering view: ${selectedView}`);
         switch (selectedView) {
             case 'dashboard':
                 return <Typography variant="h5">Admin Dashboard (Placeholder)</Typography>;
             case 'instructors':
-                if (isLoadingInstructors) {
-                    return <CircularProgress />;
-                }
-                if (instructorsError) {
-                    return <Alert severity="error">{instructorsError}</Alert>;
-                }
-                return <InstructorDashboardTable data={instructorData} />;
-            case 'pending':
-                if (isLoadingPending) {
-                    return <CircularProgress />;
-                }
-                if (pendingError) {
-                    return <Alert severity="error">{pendingError}</Alert>;
-                }
+                const filteredInstructorData = instructorData.filter(item => {
+                    const instructorMatch = !selectedInstructorFilter || item.instructorName === selectedInstructorFilter;
+                    const itemDateStr = item.date ? new Date(item.date).toISOString().split('T')[0] : null;
+                    const dateMatch = !selectedDateFilter || itemDateStr === selectedDateFilter;
+                    return instructorMatch && dateMatch;
+                });
+
+                filteredInstructorData.sort((a, b) => {
+                    let compareA, compareB;
+                    if (instructorSortBy === 'date') {
+                        compareA = new Date(a.date || 0);
+                        compareB = new Date(b.date || 0);
+                    } else if (instructorSortBy === 'status') {
+                        compareA = a.status || '';
+                        compareB = b.status || '';
+                    } else {
+                        compareA = a.instructorName || '';
+                        compareB = b.instructorName || '';
+                    }
+                    
+                    if (compareB < compareA) {
+                        return (instructorSortOrder === 'asc' ? 1 : -1);
+                    }
+                    if (compareB > compareA) {
+                        return (instructorSortOrder === 'asc' ? -1 : 1);
+                    }
+                    return 0;
+                });
+                
+                console.log(`[renderSelectedView: instructors] State: isLoading=${isLoadingInstructors}, error=${instructorsError}, ALL_DATA_LEN=${instructorData.length}, SORTED_FILTERED_DATA_LEN=${filteredInstructorData.length}`);
+                
                 return (
-                    <PendingCoursesTable 
-                        courses={pendingCourses} 
-                        onScheduleClick={handleScheduleCourseClick} 
-                        onViewStudentsClick={handleViewStudentsClick}
-                    />
+                    <>
+                        <Box sx={{ display: 'flex', gap: 2, mb: 2, alignItems: 'center' }}>
+                            <FormControl size="small" sx={{ minWidth: 200 }}>
+                                <InputLabel id="instructor-filter-label">Filter by Instructor</InputLabel>
+                                <Select
+                                    labelId="instructor-filter-label"
+                                    value={selectedInstructorFilter}
+                                    label="Filter by Instructor"
+                                    onChange={handleInstructorFilterChange}
+                                >
+                                    <MenuItem value=""><em>All Instructors</em></MenuItem>
+                                    {allInstructors.map((inst) => (
+                                        <MenuItem key={inst.instructorid} value={`${inst.firstname} ${inst.lastname}`}>
+                                            {`${inst.lastname}, ${inst.firstname}`}
+                                        </MenuItem>
+                                    ))}
+                                </Select>
+                            </FormControl>
+                            <TextField 
+                                label="Filter by Date"
+                                type="date"
+                                size="small"
+                                value={selectedDateFilter}
+                                onChange={handleDateFilterChange}
+                                InputLabelProps={{ shrink: true }}
+                                sx={{ width: 180 }}
+                            />
+                            <Button 
+                                size="small" 
+                                onClick={() => {setSelectedInstructorFilter(''); setSelectedDateFilter('');}}
+                                disabled={!selectedInstructorFilter && !selectedDateFilter}
+                            >
+                                Clear Filters
+                            </Button>
+                        </Box>
+
+                        {isLoadingInstructors ? (
+                            <CircularProgress />
+                        ) : instructorsError ? (
+                            <Alert severity="error">{instructorsError}</Alert>
+                        ) : (
+                            <InstructorDashboardTable 
+                                data={filteredInstructorData} 
+                                sortOrder={instructorSortOrder}
+                                sortBy={instructorSortBy}
+                                onSortRequest={handleInstructorSortRequest} 
+                            />
+                        )}
+                    </>
+                );
+            case 'pending':
+                // Apply date filter
+                const filteredPendingCourses = pendingCourses.filter(course => {
+                    // Format course DateRequested to YYYY-MM-DD for comparison
+                    const courseDateStr = course.daterequested ? new Date(course.daterequested).toISOString().split('T')[0] : null;
+                    return !pendingDateFilter || courseDateStr === pendingDateFilter;
+                });
+
+                console.log(`[renderSelectedView: pending] State: isLoading=${isLoadingPending}, error=${pendingError}, ALL_COURSES_LEN=${pendingCourses.length}, FILTERED_COURSES_LEN=${filteredPendingCourses.length}`);
+
+                return (
+                    <>
+                        {/* Filter UI */}
+                        <Box sx={{ display: 'flex', gap: 2, mb: 2, alignItems: 'center' }}>
+                            <TextField 
+                                label="Filter by Date Requested"
+                                type="date"
+                                size="small"
+                                value={pendingDateFilter}
+                                onChange={handlePendingDateFilterChange}
+                                InputLabelProps={{ shrink: true }}
+                                sx={{ width: 180 }}
+                            />
+                             <Button 
+                                size="small" 
+                                onClick={() => setPendingDateFilter('')}
+                                disabled={!pendingDateFilter}
+                            >
+                                Clear Date Filter
+                            </Button>
+                        </Box>
+
+                        {/* Loading / Error / Table Display */}
+                        {isLoadingPending ? (
+                            <CircularProgress />
+                        ) : pendingError ? (
+                            <Alert severity="error">{pendingError}</Alert>
+                        ) : (
+                            <PendingCoursesTable 
+                                courses={filteredPendingCourses} 
+                                onScheduleClick={handleScheduleCourseClick} 
+                                onViewStudentsClick={handleViewStudentsClick}
+                            />
+                        )}
+                    </>
                 );
             case 'scheduled':
-                console.log(`[renderSelectedView: scheduled] State: isLoading=${isLoadingScheduled}, error=${scheduledError}, courses=${JSON.stringify(scheduledCourses)}`);
-                if (isLoadingScheduled) {
-                    return <CircularProgress />;
-                }
-                if (scheduledError) {
-                    return <Alert severity="error">{scheduledError}</Alert>;
-                }
+                // Apply instructor and date filters
+                const filteredScheduledCourses = scheduledCourses.filter(course => {
+                    const instructorMatch = !scheduledInstructorFilter || course.instructorname === scheduledInstructorFilter;
+                    // Format course DateScheduled to YYYY-MM-DD
+                    const courseDateStr = course.datescheduled ? new Date(course.datescheduled).toISOString().split('T')[0] : null;
+                    const dateMatch = !scheduledDateFilter || courseDateStr === scheduledDateFilter;
+                    return instructorMatch && dateMatch;
+                });
+
+                console.log(`[renderSelectedView: scheduled] State: isLoading=${isLoadingScheduled}, error=${scheduledError}, ALL_COURSES_LEN=${scheduledCourses.length}, FILTERED_COURSES_LEN=${filteredScheduledCourses.length}`);
+                
                 return (
-                    <ScheduledCoursesTable 
-                        courses={scheduledCourses} 
-                        onViewStudentsClick={handleViewStudentsClick}
-                    />
+                    <>
+                         {/* Filter UI - Similar to Instructor Dashboard */}
+                        <Box sx={{ display: 'flex', gap: 2, mb: 2, alignItems: 'center' }}>
+                            <FormControl size="small" sx={{ minWidth: 200 }}>
+                                <InputLabel id="scheduled-instructor-filter-label">Filter by Instructor</InputLabel>
+                                <Select
+                                    labelId="scheduled-instructor-filter-label"
+                                    value={scheduledInstructorFilter}
+                                    label="Filter by Instructor"
+                                    onChange={handleScheduledInstructorFilterChange}
+                                >
+                                    <MenuItem value=""><em>All Instructors</em></MenuItem>
+                                    {allInstructors.map((inst) => (
+                                        // Use full name for consistency, might need adjustment if instructorName format differs
+                                        <MenuItem key={inst.instructorid} value={`${inst.firstname} ${inst.lastname}`}>
+                                            {`${inst.lastname}, ${inst.firstname}`}
+                                        </MenuItem>
+                                    ))}
+                                </Select>
+                            </FormControl>
+                            <TextField 
+                                label="Filter by Date Scheduled"
+                                type="date"
+                                size="small"
+                                value={scheduledDateFilter}
+                                onChange={handleScheduledDateFilterChange}
+                                InputLabelProps={{ shrink: true }}
+                                sx={{ width: 180 }}
+                            />
+                             <Button 
+                                size="small" 
+                                onClick={() => {setScheduledInstructorFilter(''); setScheduledDateFilter('');}}
+                                disabled={!scheduledInstructorFilter && !scheduledDateFilter}
+                            >
+                                Clear Filters
+                            </Button>
+                        </Box>
+
+                        {/* Loading / Error / Table Display */}
+                        {isLoadingScheduled ? (
+                            <CircularProgress />
+                        ) : scheduledError ? (
+                            <Alert severity="error">{scheduledError}</Alert>
+                        ) : (
+                            <ScheduledCoursesTable 
+                                courses={filteredScheduledCourses} 
+                                onViewStudentsClick={handleViewStudentsClick} 
+                            />
+                        )}
+                    </>
                 );
             case 'completed':
-                console.log(`[renderSelectedView: completed] State: isLoading=${isLoadingCompleted}, error=${completedError}, courses=${JSON.stringify(completedCourses)}`);
+                // Apply sorting
+                const sortedCompletedCourses = [...completedCourses].sort((a, b) => {
+                    let compareA, compareB;
+                    if (completedSortBy === 'date') {
+                        // Assuming datescheduled is the completion date for now
+                        compareA = new Date(a.datescheduled || 0); 
+                        compareB = new Date(b.datescheduled || 0);
+                    } else if (completedSortBy === 'organization') {
+                        compareA = a.organizationname || '';
+                        compareB = b.organizationname || '';
+                    } else { // instructorName
+                        compareA = a.instructorname || '';
+                        compareB = b.instructorname || '';
+                    }
+                    
+                    if (compareB < compareA) {
+                        return (completedSortOrder === 'asc' ? 1 : -1);
+                    }
+                    if (compareB > compareA) {
+                        return (completedSortOrder === 'asc' ? -1 : 1);
+                    }
+                    return 0;
+                });
+
+                console.log(`[renderSelectedView: completed] State: isLoading=${isLoadingCompleted}, error=${completedError}, SORTED_COURSES_LEN=${sortedCompletedCourses.length}`);
                 if (isLoadingCompleted) {
                     return <CircularProgress />;
                 }
@@ -228,9 +524,12 @@ const CourseAdminPortal = () => {
                 }
                 return (
                     <CompletedCoursesTable 
-                        courses={completedCourses} 
+                        courses={sortedCompletedCourses}
                         onViewStudentsClick={handleViewStudentsClick}
-                        onBillClick={handleBillClick} 
+                        onBillClick={handleBillClick}
+                        sortOrder={completedSortOrder}
+                        sortBy={completedSortBy}
+                        onSortRequest={handleCompletedSortRequest}
                     />
                 );
             default:
@@ -353,6 +652,31 @@ const CourseAdminPortal = () => {
                     courseId={selectedCourseForView}
                 />
             )}
+
+            {showScheduleDialog && (
+                <ScheduleCourseDialog
+                    open={showScheduleDialog}
+                    onClose={handleScheduleDialogClose}
+                    course={selectedCourseForSchedule}
+                    onCourseScheduled={handleCourseSuccessfullyScheduled}
+                />
+            )}
+
+            <Snackbar
+                open={snackbar.open}
+                autoHideDuration={6000}
+                onClose={() => setSnackbar({ ...snackbar, open: false })}
+                anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+            >
+                <Alert 
+                    onClose={() => setSnackbar({ ...snackbar, open: false })} 
+                    severity={snackbar.severity} 
+                    variant="filled" 
+                    sx={{ width: '100%' }}
+                >
+                    {snackbar.message}
+                </Alert>
+            </Snackbar>
         </Box>
     );
 };

@@ -44,10 +44,11 @@ const OrganizationCoursesTable = ({ courses, onUploadStudentsClick, onViewStuden
                         <TableCell>System Date</TableCell>
                         <TableCell>Date Requested</TableCell>
                         <TableCell>Course Number</TableCell>
+                        <TableCell>Organization</TableCell>
                         <TableCell>Location</TableCell>
-                        <TableCell>Course Type</TableCell>
-                        <TableCell>Registered</TableCell>
-                        <TableCell>Attendance</TableCell>
+                        <TableCell>Students Registered</TableCell>
+                        <TableCell>Students Attendance</TableCell>
+                        <TableCell>Notes</TableCell>
                         <TableCell>Status</TableCell>
                         <TableCell>Instructor</TableCell>
                         <TableCell align="center">Actions</TableCell>
@@ -63,10 +64,11 @@ const OrganizationCoursesTable = ({ courses, onUploadStudentsClick, onViewStuden
                             <TableCell>{formatDate(course.createdat)}</TableCell> {/* Assuming createdat is System Date */}
                             <TableCell>{formatDate(course.daterequested)}</TableCell>
                             <TableCell>{course.coursenumber || '-'}</TableCell>
+                            <TableCell>{course.organizationname || '-'}</TableCell>
                             <TableCell>{course.location || '-'}</TableCell>
-                            <TableCell>{course.coursetypename || '-'}</TableCell>
-                            <TableCell align="center">{course.studentsregistered ?? '-'}</TableCell> {/* Use correct column name */}
-                            <TableCell align="center">{'-'}</TableCell> {/* Placeholder for Attendance */}
+                            <TableCell align="center">{course.studentsregistered ?? '-'}</TableCell>
+                            <TableCell align="center">{course.studentsattendance ?? '-'}</TableCell>
+                            <TableCell>{course.notes || '-'}</TableCell>
                             <TableCell>{course.status || '-'}</TableCell>
                             <TableCell>{course.instructorname || (course.status === 'Pending' ? 'Not Assigned' : '-')}</TableCell>
                             <TableCell align="center">
