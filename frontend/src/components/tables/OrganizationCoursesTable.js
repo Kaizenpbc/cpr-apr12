@@ -10,8 +10,10 @@ import {
     Button,
     Box,
     Typography,
-    Tooltip // Import Tooltip for action buttons
+    Tooltip,
+    TableSortLabel
 } from '@mui/material';
+import { visuallyHidden } from '@mui/utils';
 
 // Helper function to format date string (optional, can format directly)
 const formatDate = (dateString) => {
@@ -23,7 +25,7 @@ const formatDate = (dateString) => {
     }
 };
 
-const OrganizationCoursesTable = ({ courses, onUploadStudentsClick, onViewStudentsClick }) => {
+const OrganizationCoursesTable = ({ courses, onUploadStudentsClick, onViewStudentsClick, sortOrder, sortBy, onSortRequest }) => {
 
     if (!courses || courses.length === 0) {
         return <Typography sx={{ mt: 2 }}>No courses found for this organization.</Typography>;
@@ -35,6 +37,10 @@ const OrganizationCoursesTable = ({ courses, onUploadStudentsClick, onViewStuden
         alert('View Students functionality not yet implemented.');
     };
 
+    const createSortHandler = (property) => (event) => {
+        onSortRequest(property);
+    };
+
     return (
         <TableContainer component={Paper} sx={{ mt: 2 }}>
             <Table stickyHeader aria-label="organization courses table">
@@ -42,7 +48,23 @@ const OrganizationCoursesTable = ({ courses, onUploadStudentsClick, onViewStuden
                     <TableRow>
                         {/* Define Table Headers based on requirements */}
                         <TableCell>System Date</TableCell>
-                        <TableCell>Date Requested</TableCell>
+                        <TableCell 
+                            key="daterequested"
+                            sortDirection={sortBy === 'daterequested' ? sortOrder : false}
+                        >
+                            <TableSortLabel
+                                active={sortBy === 'daterequested'}
+                                direction={sortBy === 'daterequested' ? sortOrder : 'asc'}
+                                onClick={createSortHandler('daterequested')}
+                            >
+                                Date Requested
+                                {sortBy === 'daterequested' ? (
+                                    <Box component="span" sx={visuallyHidden}>
+                                        {sortOrder === 'desc' ? 'sorted descending' : 'sorted ascending'}
+                                    </Box>
+                                ) : null}
+                            </TableSortLabel>
+                        </TableCell>
                         <TableCell>Course Number</TableCell>
                         <TableCell>Organization</TableCell>
                         <TableCell>Location</TableCell>
@@ -61,7 +83,7 @@ const OrganizationCoursesTable = ({ courses, onUploadStudentsClick, onViewStuden
                             hover
                             sx={{ '&:last-child td, &:last-child th': { border: 0 } }}
                         >
-                            <TableCell>{formatDate(course.createdat)}</TableCell> {/* Assuming createdat is System Date */}
+                            <TableCell>{formatDate(course.systemdate)}</TableCell>
                             <TableCell>{formatDate(course.daterequested)}</TableCell>
                             <TableCell>{course.coursenumber || '-'}</TableCell>
                             <TableCell>{course.organizationname || '-'}</TableCell>

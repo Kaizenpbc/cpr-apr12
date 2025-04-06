@@ -490,6 +490,7 @@ const InstructorPortal = () => {
                     <TableHead>
                         <TableRow>
                             <TableCell>Date</TableCell>
+                            <TableCell>Course Number</TableCell>
                             <TableCell>Organization</TableCell>
                             <TableCell>Location</TableCell>
                             <TableCell>Class Type</TableCell>
@@ -525,6 +526,7 @@ const InstructorPortal = () => {
                             // Determine row data based on whether a class matches
                             const rowData = matchingClass ? {
                                 date: new Date(matchingClass.datescheduled).toLocaleDateString(),
+                                courseNumber: matchingClass.coursenumber || '-',
                                 org: matchingClass.organizationname || '-',
                                 loc: matchingClass.location || '-',
                                 type: matchingClass.coursetypename || '-',
@@ -534,6 +536,7 @@ const InstructorPortal = () => {
                                 status: matchingClass.status || 'Scheduled'
                             } : {
                                 date: new Date(availableDateStr).toLocaleDateString(),
+                                courseNumber: '-',
                                 org: '-',
                                 loc: '-',
                                 type: '-',
@@ -548,6 +551,7 @@ const InstructorPortal = () => {
                             return (
                                 <TableRow key={availableDateStr + index}>
                                     <TableCell>{rowData.date}</TableCell>
+                                    <TableCell>{rowData.courseNumber}</TableCell>
                                     <TableCell>{rowData.org}</TableCell>
                                     <TableCell>{rowData.loc}</TableCell>
                                     <TableCell>{rowData.type}</TableCell>
@@ -584,7 +588,7 @@ const InstructorPortal = () => {
         return (
             <Box>
                 <Typography variant="h6" gutterBottom>
-                    {selectedClassForAttendance.coursetypename} - {selectedClassForAttendance.organizationname}
+                    {selectedClassForAttendance.coursetypename} ({selectedClassForAttendance.coursenumber}) - {selectedClassForAttendance.organizationname}
                 </Typography>
                 <Typography variant="body1" gutterBottom>
                     Date: {new Date(selectedClassForAttendance.datescheduled).toLocaleDateString()} | Location: {selectedClassForAttendance.location}

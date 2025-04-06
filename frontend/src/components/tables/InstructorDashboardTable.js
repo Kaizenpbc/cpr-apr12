@@ -72,6 +72,7 @@ const InstructorDashboardTable = ({ data, sortOrder, sortBy, onSortRequest }) =>
                                 ) : null}
                             </TableSortLabel>
                         </TableCell>
+                        <TableCell>Course Number</TableCell>
                         <TableCell>Organization</TableCell>
                         <TableCell>Location</TableCell>
                         <TableCell>Students Registered</TableCell>
@@ -97,25 +98,30 @@ const InstructorDashboardTable = ({ data, sortOrder, sortBy, onSortRequest }) =>
                     </TableRow>
                 </TableHead>
                 <TableBody>
-                    {data.map((item) => (
-                        <TableRow 
-                            key={item.id}
-                            hover
-                            sx={{ 
-                                '&:last-child td, &:last-child th': { border: 0 },
-                                bgcolor: item.status === 'Available' ? '#fffde7' : 'inherit' 
-                            }}
-                        >
-                            <TableCell>{item.instructorName || '-'}</TableCell>
-                            <TableCell>{formatDate(item.date)}</TableCell>
-                            <TableCell>{item.organizationName || '-'}</TableCell>
-                            <TableCell>{item.location || '-'}</TableCell>
-                            <TableCell align="center">{item.studentsRegistered ?? '-'}</TableCell>
-                            <TableCell align="center">{item.studentsAttendance ?? '-'}</TableCell>
-                            <TableCell>{item.notes || '-'}</TableCell>
-                            <TableCell>{item.status || '-'}</TableCell>
-                        </TableRow>
-                    ))}
+                    {data.map((item) => {
+                        // Extract course number if it's a course item
+                        const courseNumber = item.id.startsWith('course-') ? item.coursenumber : '-';
+                        return (
+                            <TableRow 
+                                key={item.id}
+                                hover
+                                sx={{ 
+                                    '&:last-child td, &:last-child th': { border: 0 },
+                                    bgcolor: item.status === 'Available' ? '#fffde7' : 'inherit' 
+                                }}
+                            >
+                                <TableCell>{item.instructorName || '-'}</TableCell>
+                                <TableCell>{formatDate(item.date)}</TableCell>
+                                <TableCell>{courseNumber}</TableCell>
+                                <TableCell>{item.organizationName || '-'}</TableCell>
+                                <TableCell>{item.location || '-'}</TableCell>
+                                <TableCell align="center">{item.studentsRegistered ?? '-'}</TableCell>
+                                <TableCell align="center">{item.studentsAttendance ?? '-'}</TableCell>
+                                <TableCell>{item.notes || '-'}</TableCell>
+                                <TableCell>{item.status || '-'}</TableCell>
+                            </TableRow>
+                        );
+                    })}
                 </TableBody>
             </Table>
         </TableContainer>

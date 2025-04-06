@@ -487,16 +487,18 @@ app.get('/api/admin/instructor-dashboard', authenticateToken, async (req, res) =
         const availabilityRes = await db.query('SELECT InstructorID, AvailableDate FROM InstructorAvailability');
         const availability = availabilityRes.rows;
 
-        // 3. Get all Scheduled Courses with Org info
+        // 3. Get all Scheduled/Completed Courses with Org info
         const coursesRes = await db.query(`
             SELECT 
                 c.CourseID, c.InstructorID, c.OrganizationID, c.DateScheduled, c.Location, 
-                c.StudentsRegistered, c.Notes, c.Status, ct.CourseTypeName,
+                c.StudentsRegistered, c.Notes, c.Status, 
+                c.CourseNumber, -- Ensure CourseNumber is selected
+                ct.CourseTypeName,
                 o.OrganizationName
             FROM Courses c
             LEFT JOIN CourseTypes ct ON c.CourseTypeID = ct.CourseTypeID
             LEFT JOIN Organizations o ON c.OrganizationID = o.OrganizationID
-            WHERE c.Status IN ('Scheduled', 'Completed') -- Only fetch relevant courses
+            WHERE c.Status IN ('Scheduled', 'Completed') 
         `);
         const courses = coursesRes.rows;
 
@@ -533,12 +535,13 @@ app.get('/api/admin/instructor-dashboard', authenticateToken, async (req, res) =
                     id: `course-${course.courseid}`,
                     instructorName: `${inst.firstname} ${inst.lastname}`,
                     date: course.datescheduled,
-                    status: course.status, // Scheduled or Completed
+                    status: course.status, 
                     organizationName: course.organizationname,
                     location: course.location,
                     studentsRegistered: course.studentsregistered,
-                    studentsAttendance: '-', // Placeholder
-                    notes: course.notes
+                    studentsAttendance: '-', 
+                    notes: course.notes,
+                    coursenumber: course.coursenumber // Pass course number through
                 });
             });
         });

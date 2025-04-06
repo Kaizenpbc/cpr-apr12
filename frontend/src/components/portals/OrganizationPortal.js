@@ -40,6 +40,10 @@ const OrganizationPortal = () => {
     const [showViewStudentsDialog, setShowViewStudentsDialog] = useState(false);
     const [selectedCourseForView, setSelectedCourseForView] = useState(null);
     const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
+    // --- Add Sorting State for Org Courses ---
+    const [orgCoursesSortOrder, setOrgCoursesSortOrder] = useState('asc'); // Default to asc as per backend
+    const [orgCoursesSortBy, setOrgCoursesSortBy] = useState('daterequested'); // Default sort by requested date
+    // --- End Sorting State ---
 
     const handleLogout = () => {
         logout();
@@ -120,6 +124,19 @@ const OrganizationPortal = () => {
     };
     // --- End Action Handlers ---
 
+    // --- Sorting Handler for Org Courses ---
+    const handleOrgCoursesSortRequest = (property) => {
+        // Only supporting 'daterequested' for now
+        if (property === 'daterequested') { 
+            const isAsc = orgCoursesSortBy === property && orgCoursesSortOrder === 'asc';
+            setOrgCoursesSortOrder(isAsc ? 'desc' : 'asc');
+            setOrgCoursesSortBy(property);
+            // Re-fetch data with new sort order? No, backend handles initial sort.
+            // We will sort the currently loaded data on the frontend.
+        }
+    };
+    // --- End Sorting Handler ---
+
     const renderSelectedView = () => {
         switch (selectedView) {
             case 'schedule':
@@ -131,11 +148,32 @@ const OrganizationPortal = () => {
                 if (coursesError) {
                     return <Alert severity="error">{coursesError}</Alert>;
                 }
+
+                // Apply sorting to the fetched data
+                const sortedOrgCourses = [...organizationCourses].sort((a, b) => {
+                    let compareA, compareB;
+                    // Currently only sorting by daterequested
+                    compareA = new Date(a.daterequested || 0); 
+                    compareB = new Date(b.daterequested || 0);
+                    
+                    if (compareB < compareA) {
+                        return (orgCoursesSortOrder === 'asc' ? 1 : -1);
+                    }
+                    if (compareB > compareA) {
+                        return (orgCoursesSortOrder === 'asc' ? -1 : 1);
+                    }
+                    return 0;
+                });
+
                 return (
                     <OrganizationCoursesTable 
-                        courses={organizationCourses} 
+                        courses={sortedOrgCourses} // Pass sorted data
                         onUploadStudentsClick={handleUploadStudentsClick} 
                         onViewStudentsClick={handleViewStudentsClick}
+                        // Pass sorting props
+                        sortOrder={orgCoursesSortOrder}
+                        sortBy={orgCoursesSortBy}
+                        onSortRequest={handleOrgCoursesSortRequest}
                     />
                 );
             default:
