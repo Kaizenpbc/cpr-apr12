@@ -206,16 +206,32 @@ app.get('/api/organizations/:id/courses', async (req, res) => {
 app.post('/api/instructor/availability', authenticateToken, async (req, res) => {
     try {
         const { date } = req.body;
-        const instructorId = req.user.userid;
+        const userId = req.user.userid; // Get the UserID from the token/middleware
 
-        const result = await db.query(
-            'INSERT INTO InstructorAvailability (InstructorID, AvailableDate) VALUES ($1, $2) RETURNING *',
-            [instructorId, date]
+        // 1. Find the InstructorID based on the UserID
+        const instructorResult = await db.query(
+            'SELECT InstructorID FROM Instructors WHERE UserID = $1',
+            [userId]
         );
 
-        res.json({ success: true, message: 'Availability added successfully' });
+        if (instructorResult.rows.length === 0) {
+            return res.status(403).json({ success: false, message: 'User is not an instructor' });
+        }
+        const instructorId = instructorResult.rows[0].instructorid; // Correct InstructorID
+
+        // 2. Insert using the correct InstructorID
+        const result = await db.query(
+            'INSERT INTO InstructorAvailability (InstructorID, AvailableDate) VALUES ($1, $2) RETURNING *',
+            [instructorId, date] // Use the fetched instructorId
+        );
+
+        res.status(201).json({ success: true, message: 'Availability added successfully' }); // Use 201 for successful creation
     } catch (error) {
         console.error('Error adding availability:', error);
+        // Check for potential duplicate entry error (unique constraint violation)
+        if (error.code === '23505') { // PostgreSQL unique violation code
+            return res.status(409).json({ success: false, message: 'Date already marked as available' });
+        }
         res.status(500).json({ success: false, message: 'Failed to add availability' });
     }
 });
@@ -223,14 +239,32 @@ app.post('/api/instructor/availability', authenticateToken, async (req, res) => 
 app.delete('/api/instructor/availability/:date', authenticateToken, async (req, res) => {
     try {
         const { date } = req.params;
-        const instructorId = req.user.userid;
+        const userId = req.user.userid; // Get the UserID from the token/middleware
 
-        await db.query(
-            'DELETE FROM InstructorAvailability WHERE InstructorID = $1 AND AvailableDate = $2',
-            [instructorId, date]
+        // 1. Find the InstructorID based on the UserID
+        const instructorResult = await db.query(
+            'SELECT InstructorID FROM Instructors WHERE UserID = $1',
+            [userId]
         );
 
-        res.json({ success: true, message: 'Availability removed successfully' });
+        if (instructorResult.rows.length === 0) {
+            return res.status(403).json({ success: false, message: 'User is not an instructor' });
+        }
+        const instructorId = instructorResult.rows[0].instructorid; // Correct InstructorID
+
+        // 2. Delete using the correct InstructorID
+        const deleteResult = await db.query(
+            'DELETE FROM InstructorAvailability WHERE InstructorID = $1 AND AvailableDate = $2',
+            [instructorId, date] // Use the fetched instructorId
+        );
+
+        // Check if any row was actually deleted
+        if (deleteResult.rowCount > 0) {
+            res.json({ success: true, message: 'Availability removed successfully' });
+        } else {
+            // Optionally, you could return a 404 if the date wasn't found for this instructor
+            res.status(404).json({ success: false, message: 'Availability date not found for this instructor' });
+        }
     } catch (error) {
         console.error('Error removing availability:', error);
         res.status(500).json({ success: false, message: 'Failed to remove availability' });
@@ -239,14 +273,27 @@ app.delete('/api/instructor/availability/:date', authenticateToken, async (req, 
 
 app.get('/api/instructor/availability', authenticateToken, async (req, res) => {
     try {
-        const instructorId = req.user.userid;
+        const userId = req.user.userid; // Get the UserID from the token/middleware
 
-        const result = await db.query(
-            'SELECT AvailableDate FROM InstructorAvailability WHERE InstructorID = $1',
-            [instructorId]
+        // 1. Find the InstructorID based on the UserID
+        const instructorResult = await db.query(
+            'SELECT InstructorID FROM Instructors WHERE UserID = $1',
+            [userId]
         );
 
-        res.json({ success: true, dates: result.rows.map(row => row.availabledate) });
+        if (instructorResult.rows.length === 0) {
+            return res.status(403).json({ success: false, message: 'User is not an instructor' });
+        }
+        const instructorId = instructorResult.rows[0].instructorid; // Correct InstructorID
+
+        // 2. Fetch availability using the correct InstructorID
+        const result = await db.query(
+            'SELECT AvailableDate FROM InstructorAvailability WHERE InstructorID = $1',
+            [instructorId] // Use the fetched instructorId
+        );
+
+        // Directly return the array of dates as expected by the frontend
+        res.json(result.rows.map(row => row.availabledate));
     } catch (error) {
         console.error('Error fetching availability:', error);
         res.status(500).json({ success: false, message: 'Failed to fetch availability' });
