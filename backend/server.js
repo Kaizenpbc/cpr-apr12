@@ -212,7 +212,7 @@ app.get('/api/organizations/:id/courses', async (req, res) => {
                 ct.CourseTypeName,
                 u.FirstName,
                 u.LastName
-            ORDER BY c.DateRequested DESC
+            ORDER BY c.DateRequested ASC
         `, [req.params.id]);
         
         res.json({ success: true, courses: result.rows });
@@ -435,6 +435,169 @@ app.post('/api/courses/request', authenticateToken, async (req, res) => {
         console.error('--- END ERROR DETAILS ---');
         
         res.status(500).json({ success: false, message: 'Failed to request course' });
+    }
+});
+
+// --- Admin: Get Instructor Dashboard Data ---
+app.get('/api/admin/instructor-dashboard', authenticateToken, async (req, res) => {
+    // Optional: Add role check here if needed
+    // if (req.user.role !== 'Admin') { 
+    //     return res.status(403).json({ success: false, message: 'Unauthorized' });
+    // }
+
+    try {
+        // 1. Get all Instructors
+        const instructorsRes = await db.query(`
+            SELECT i.InstructorID, u.UserID, u.FirstName, u.LastName 
+            FROM Instructors i 
+            JOIN Users u ON i.UserID = u.UserID
+        `);
+        const instructors = instructorsRes.rows;
+
+        // 2. Get all Availability
+        const availabilityRes = await db.query('SELECT InstructorID, AvailableDate FROM InstructorAvailability');
+        const availability = availabilityRes.rows;
+
+        // 3. Get all Scheduled Courses with Org info
+        const coursesRes = await db.query(`
+            SELECT 
+                c.CourseID, c.InstructorID, c.OrganizationID, c.DateScheduled, c.Location, 
+                c.StudentsRegistered, c.Notes, c.Status, ct.CourseTypeName,
+                o.OrganizationName
+            FROM Courses c
+            LEFT JOIN CourseTypes ct ON c.CourseTypeID = ct.CourseTypeID
+            LEFT JOIN Organizations o ON c.OrganizationID = o.OrganizationID
+            WHERE c.Status IN ('Scheduled', 'Completed') -- Only fetch relevant courses
+        `);
+        const courses = coursesRes.rows;
+
+        // 4. Combine the data
+        const dashboardData = [];
+
+        instructors.forEach(inst => {
+            // Add availability slots
+            availability.filter(avail => avail.instructorid === inst.instructorid).forEach(avail => {
+                // Check if a course is scheduled for this instructor on this date
+                const scheduledCourse = courses.find(course => 
+                    course.instructorid === inst.instructorid && 
+                    new Date(course.datescheduled).toDateString() === new Date(avail.availabledate).toDateString()
+                );
+
+                if (!scheduledCourse) { // Only add if no course is scheduled for this availability slot
+                    dashboardData.push({
+                        id: `avail-${inst.instructorid}-${avail.availabledate}`,
+                        instructorName: `${inst.firstname} ${inst.lastname}`,
+                        date: avail.availabledate,
+                        status: 'Available',
+                        organizationName: '-', 
+                        location: '-',
+                        studentsRegistered: '-',
+                        studentsAttendance: '-', // Placeholder
+                        notes: '-' 
+                    });
+                }
+            });
+
+            // Add scheduled/completed classes for this instructor
+            courses.filter(course => course.instructorid === inst.instructorid).forEach(course => {
+                dashboardData.push({
+                    id: `course-${course.courseid}`,
+                    instructorName: `${inst.firstname} ${inst.lastname}`,
+                    date: course.datescheduled,
+                    status: course.status, // Scheduled or Completed
+                    organizationName: course.organizationname,
+                    location: course.location,
+                    studentsRegistered: course.studentsregistered,
+                    studentsAttendance: '-', // Placeholder
+                    notes: course.notes
+                });
+            });
+        });
+
+        // Sort the combined data (optional, e.g., by date then instructor)
+        dashboardData.sort((a, b) => new Date(a.date) - new Date(b.date) || a.instructorName.localeCompare(b.instructorName));
+
+        res.json({ success: true, data: dashboardData });
+
+    } catch (err) {
+        console.error("Error fetching instructor dashboard data:", err);
+        res.status(500).json({ success: false, message: 'Failed to fetch instructor dashboard data' });
+    }
+});
+
+// --- Admin: Get Pending Courses ---
+app.get('/api/admin/pending-courses', authenticateToken, async (req, res) => {
+    try {
+        // Query courses with 'Pending' status, joining with org and course type
+        const result = await db.query(`
+            SELECT 
+                c.CourseID, c.CreatedAt AS SystemDate, c.DateRequested, c.CourseNumber, 
+                c.Location, c.StudentsRegistered, c.Notes, c.Status,
+                o.OrganizationName,
+                ct.CourseTypeName
+            FROM Courses c
+            JOIN Organizations o ON c.OrganizationID = o.OrganizationID
+            JOIN CourseTypes ct ON c.CourseTypeID = ct.CourseTypeID
+            WHERE c.Status = 'Pending'
+            ORDER BY c.DateRequested ASC -- Or DESC as preferred
+        `);
+        
+        res.json({ success: true, courses: result.rows });
+
+    } catch (err) {
+        console.error("Error fetching pending courses:", err);
+        res.status(500).json({ success: false, message: 'Failed to fetch pending courses' });
+    }
+});
+
+// --- Admin: Get Scheduled Courses ---
+app.get('/api/admin/scheduled-courses', authenticateToken, async (req, res) => {
+    try {
+        const result = await db.query(`
+            SELECT 
+                c.CourseID, c.CreatedAt AS SystemDate, c.DateRequested, c.DateScheduled, c.CourseNumber, 
+                c.Location, c.StudentsRegistered, c.Notes, c.Status,
+                o.OrganizationName,
+                ct.CourseTypeName,
+                CONCAT(u.FirstName, ' ', u.LastName) as InstructorName
+            FROM Courses c
+            JOIN Organizations o ON c.OrganizationID = o.OrganizationID
+            JOIN CourseTypes ct ON c.CourseTypeID = ct.CourseTypeID
+            LEFT JOIN Instructors i ON c.InstructorID = i.InstructorID
+            LEFT JOIN Users u ON i.UserID = u.UserID
+            WHERE c.Status = 'Scheduled'
+            ORDER BY c.DateScheduled ASC -- Or other preferred order
+        `);
+        res.json({ success: true, courses: result.rows });
+    } catch (err) {
+        console.error("Error fetching scheduled courses:", err);
+        res.status(500).json({ success: false, message: 'Failed to fetch scheduled courses' });
+    }
+});
+
+// --- Admin: Get Completed Courses ---
+app.get('/api/admin/completed-courses', authenticateToken, async (req, res) => {
+    try {
+        const result = await db.query(`
+            SELECT 
+                c.CourseID, c.CreatedAt AS SystemDate, c.DateRequested, c.DateScheduled, c.CourseNumber, 
+                c.Location, c.StudentsRegistered, c.Notes, c.Status, 
+                o.OrganizationName,
+                ct.CourseTypeName,
+                CONCAT(u.FirstName, ' ', u.LastName) as InstructorName
+                -- TODO: Add Students Attendance data later when available
+            FROM Courses c
+            JOIN Organizations o ON c.OrganizationID = o.OrganizationID
+            JOIN CourseTypes ct ON c.CourseTypeID = ct.CourseTypeID
+            LEFT JOIN Instructors i ON c.InstructorID = i.InstructorID
+            LEFT JOIN Users u ON i.UserID = u.UserID
+            WHERE c.Status = 'Completed'
+            ORDER BY c.DateScheduled DESC -- Or other preferred order
+        `);
+        res.json({ success: true, courses: result.rows });
+    } catch (err) {
+        console.error("Error fetching completed courses:", err);
+        res.status(500).json({ success: false, message: 'Failed to fetch completed courses' });
     }
 });
 
