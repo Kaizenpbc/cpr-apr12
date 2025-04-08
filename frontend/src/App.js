@@ -8,6 +8,7 @@ import InstructorPortal from './components/portals/InstructorPortal';
 import OrganizationPortal from './components/portals/OrganizationPortal';
 import CourseAdminPortal from './components/portals/CourseAdminPortal';
 import AccountingPortal from './components/portals/AccountingPortal';
+import SuperAdminPortal from './components/portals/SuperAdminPortal';
 
 const theme = createTheme({
   palette: {
@@ -30,7 +31,7 @@ function App() {
             <Route
               path="/Instructor/*"
               element={
-                <PrivateRoute>
+                <PrivateRoute allowedRoles={['Instructor']}>
                   <InstructorPortal />
                 </PrivateRoute>
               }
@@ -38,7 +39,7 @@ function App() {
             <Route
               path="/Organization/*"
               element={
-                <PrivateRoute>
+                <PrivateRoute allowedRoles={['Organization']}>
                   <OrganizationPortal />
                 </PrivateRoute>
               }
@@ -46,7 +47,7 @@ function App() {
             <Route
               path="/Admin/*"
               element={
-                <PrivateRoute>
+                <PrivateRoute allowedRoles={['Admin']}>
                   <CourseAdminPortal />
                 </PrivateRoute>
               }
@@ -54,8 +55,16 @@ function App() {
             <Route
               path="/Accounting/*"
               element={
-                <PrivateRoute>
+                <PrivateRoute allowedRoles={['Accounting']}>
                   <AccountingPortal />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/SuperAdmin/*"
+              element={
+                <PrivateRoute allowedRoles={['SuperAdmin']}>
+                  <SuperAdminPortal />
                 </PrivateRoute>
               }
             />

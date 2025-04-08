@@ -398,4 +398,83 @@ export const getInvoices = async () => {
     }
 };
 
+// === NEW SuperAdmin Functions ===
+
+// --- Organization Management (SuperAdmin) ---
+export const getOrganizations = async () => {
+    console.log('[API Service] Fetching all organizations...');
+    try {
+        // Assumes API interceptor adds the token (Bearer 5 for superadmin)
+        const response = await api.get('/organizations');
+        if (response && response.success) {
+            return response.organizations;
+        } else {
+            throw new Error(response?.message || 'Failed to fetch organizations');
+        }
+    } catch (error) {
+        console.error('[API Service] Error fetching organizations:', error);
+        throw error?.message ? new Error(error.message) : error;
+    }
+};
+
+export const addOrganization = async (orgData) => {
+    console.log('[API Service] Adding new organization:', orgData);
+    try {
+        // Assumes API interceptor adds the token
+        const response = await api.post('/organizations', orgData);
+        if (response && response.success) {
+            return response.organization; // Return the newly created org object
+        } else {
+            throw new Error(response?.message || 'Failed to add organization');
+        }
+    } catch (error) {
+        console.error('[API Service] Error adding organization:', error);
+        // Rethrow specific validation errors if possible
+        if (error instanceof Error) throw error;
+        // Otherwise throw generic
+        throw new Error('Failed to add organization on the server.');
+    }
+};
+
+// Add getOrganizationById, updateOrganization, deleteOrganization later
+
+// --- User Management (SuperAdmin) ---
+export const getUsers = async () => {
+    console.log('[API Service] Fetching all users...');
+    try {
+        // Assumes API interceptor adds the token
+        const response = await api.get('/users');
+        if (response && response.success) {
+            return response.users;
+        } else {
+            throw new Error(response?.message || 'Failed to fetch users');
+        }
+    } catch (error) {
+        console.error('[API Service] Error fetching users:', error);
+        throw error?.message ? new Error(error.message) : error;
+    }
+};
+
+export const addUser = async (userData) => {
+    console.log('[API Service] Adding new user:', userData);
+    try {
+        // Assumes API interceptor adds the token
+        const response = await api.post('/users', userData);
+        if (response && response.success) {
+            return response.user; // Return the newly created user object
+        } else {
+            // Throw the specific error message from backend if available
+            throw new Error(response?.message || 'Failed to add user');
+        }
+    } catch (error) {
+        console.error('[API Service] Error adding user:', error);
+        // Rethrow specific validation errors if possible
+        if (error instanceof Error) throw error;
+        // Otherwise throw generic
+        throw new Error('Failed to add user on the server.');
+    }
+};
+
+// Add getUserById, updateUser, deleteUser later
+
 export default api; 

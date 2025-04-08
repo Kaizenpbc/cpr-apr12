@@ -18,7 +18,7 @@ router.get('/', authenticateToken, checkSuperAdmin, async (req, res) => {
     try {
         // Select relevant user fields, potentially join with Organizations for OrgName
         const result = await pool.query(`
-            SELECT u.UserID, u.Username, u.Role, u.FirstName, u.LastName, u.Email, u.OrganizationID, o.OrganizationName
+            SELECT u.UserID, u.Username, u.Role, u.FirstName, u.LastName, u.Email, u.Phone, u.OrganizationID, o.OrganizationName
             FROM Users u
             LEFT JOIN Organizations o ON u.OrganizationID = o.OrganizationID
             ORDER BY u.LastName, u.FirstName
@@ -34,7 +34,7 @@ router.get('/', authenticateToken, checkSuperAdmin, async (req, res) => {
 router.post('/', authenticateToken, checkSuperAdmin, async (req, res) => {
     console.log('[API POST /users] Request received with body:', req.body);
     const {
-        username, password, role, firstName, lastName, email,
+        username, password, role, firstName, lastName, email, phone,
         organizationId // Required if role is 'Organization'
     } = req.body;
 
@@ -57,10 +57,10 @@ router.post('/', authenticateToken, checkSuperAdmin, async (req, res) => {
         // Insert into Users table
         // Note: Storing plain text passwords is very insecure! Use hashing (e.g., bcrypt) in a real app.
         const userInsertResult = await client.query(
-            `INSERT INTO Users (Username, Password, Role, FirstName, LastName, Email, OrganizationID)
-             VALUES ($1, $2, $3, $4, $5, $6, $7)
+            `INSERT INTO Users (Username, Password, Role, FirstName, LastName, Email, Phone, OrganizationID)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
              RETURNING UserID`,
-            [username, password, role, firstName, lastName, email, role === 'Organization' ? organizationId : null]
+            [username, password, role, firstName, lastName, email, phone || null, role === 'Organization' ? organizationId : null]
         );
         const newUserId = userInsertResult.rows[0].userid;
 
@@ -76,7 +76,7 @@ router.post('/', authenticateToken, checkSuperAdmin, async (req, res) => {
         await client.query('COMMIT');
 
         // Fetch the newly created user details (optional but good practice)
-        const newUserResult = await pool.query('SELECT UserID, Username, Role, FirstName, LastName, Email, OrganizationID FROM Users WHERE UserID = $1', [newUserId]);
+        const newUserResult = await pool.query('SELECT UserID, Username, Role, FirstName, LastName, Email, Phone, OrganizationID FROM Users WHERE UserID = $1', [newUserId]);
 
         console.log('[API POST /users] User created successfully:', newUserResult.rows[0]);
         res.status(201).json({ success: true, message: 'User created successfully.', user: newUserResult.rows[0] });
@@ -109,7 +109,7 @@ router.get('/:id', authenticateToken, checkSuperAdmin, async (req, res) => {
     try {
         // Fetch user, join with org name if available
         const result = await pool.query(`
-            SELECT u.UserID, u.Username, u.Role, u.FirstName, u.LastName, u.Email, u.OrganizationID, o.OrganizationName
+            SELECT u.UserID, u.Username, u.Role, u.FirstName, u.LastName, u.Email, u.Phone, u.OrganizationID, o.OrganizationName
             FROM Users u
             LEFT JOIN Organizations o ON u.OrganizationID = o.OrganizationID
             WHERE u.UserID = $1
@@ -137,7 +137,7 @@ router.put('/:id', authenticateToken, checkSuperAdmin, async (req, res) => {
 
     // Extract updatable fields from request body
     const {
-        username, password, role, firstName, lastName, email,
+        username, password, role, firstName, lastName, email, phone,
         organizationId // Required if role is 'Organization'
     } = req.body;
 
@@ -176,14 +176,14 @@ router.put('/:id', authenticateToken, checkSuperAdmin, async (req, res) => {
         // 2. Update Users table
         const userUpdateResult = await client.query(
             `UPDATE Users SET
-                Username = $1, Role = $2, FirstName = $3, LastName = $4, Email = $5,
-                OrganizationID = $6, UpdatedAt = CURRENT_TIMESTAMP
-                ${password ? ', Password = $8' : ''} -- Only update password if provided
-             WHERE UserID = $7
+                Username = $1, Role = $2, FirstName = $3, LastName = $4, Email = $5, Phone = $6,
+                OrganizationID = $7, UpdatedAt = CURRENT_TIMESTAMP
+                ${password ? ', Password = $9' : ''}
+             WHERE UserID = $8
              RETURNING UserID`,
             password ? 
-            [username, role, firstName, lastName, email, role === 'Organization' ? organizationId : null, userIdToUpdate, password] :
-            [username, role, firstName, lastName, email, role === 'Organization' ? organizationId : null, userIdToUpdate]
+            [username, role, firstName, lastName, email, phone || null, role === 'Organization' ? organizationId : null, userIdToUpdate, password] :
+            [username, role, firstName, lastName, email, phone || null, role === 'Organization' ? organizationId : null, userIdToUpdate]
         );
 
         if (userUpdateResult.rowCount === 0) {
@@ -209,7 +209,7 @@ router.put('/:id', authenticateToken, checkSuperAdmin, async (req, res) => {
         await client.query('COMMIT');
 
         // Fetch updated user details
-        const updatedUserResult = await pool.query('SELECT UserID, Username, Role, FirstName, LastName, Email, OrganizationID FROM Users WHERE UserID = $1', [userIdToUpdate]);
+        const updatedUserResult = await pool.query('SELECT UserID, Username, Role, FirstName, LastName, Email, Phone, OrganizationID FROM Users WHERE UserID = $1', [userIdToUpdate]);
 
         console.log(`[API PUT /users/${userIdToUpdate}] User updated successfully:`, updatedUserResult.rows[0]);
         res.json({ success: true, message: 'User updated successfully.', user: updatedUserResult.rows[0] });

@@ -30,13 +30,13 @@ router.get('/', authenticateToken, checkSuperAdmin, async (req, res) => {
 router.post('/', authenticateToken, checkSuperAdmin, async (req, res) => {
     console.log('[API POST /organizations] Request received with body:', req.body);
     const {
-        organizationName, contactName, contactEmail, contactPhone,
-        addressStreet, addressCity, addressProvince, addressPostalCode,
-        mainPhone, ceoName, ceoPhone, ceoEmail
+        organizationname, contactname, contactemail, contactphone,
+        addressstreet, addresscity, addressprovince, addresspostalcode,
+        ceoname, ceophone, ceoemail
     } = req.body;
 
     // Basic validation
-    if (!organizationName) {
+    if (!organizationname) {
         return res.status(400).json({ success: false, message: 'Organization Name is required.' });
     }
 
@@ -45,13 +45,13 @@ router.post('/', authenticateToken, checkSuperAdmin, async (req, res) => {
             `INSERT INTO Organizations (
                 OrganizationName, ContactName, ContactEmail, ContactPhone, 
                 AddressStreet, AddressCity, AddressProvince, AddressPostalCode, 
-                MainPhone, CEOName, CEOPhone, CEOEmail
-             ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) 
+                CEOName, CEOPhone, CEOEmail
+             ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) 
              RETURNING *`,
             [
-                organizationName, contactName, contactEmail, contactPhone,
-                addressStreet, addressCity, addressProvince, addressPostalCode,
-                mainPhone, ceoName, ceoPhone, ceoEmail
+                organizationname, contactname, contactemail, contactphone,
+                addressstreet, addresscity, addressprovince, addresspostalcode,
+                ceoname, ceophone, ceoemail
             ]
         );
         
@@ -100,12 +100,12 @@ router.put('/:id', authenticateToken, checkSuperAdmin, async (req, res) => {
     }
 
     const {
-        organizationName, contactName, contactEmail, contactPhone,
-        addressStreet, addressCity, addressProvince, addressPostalCode,
-        mainPhone, ceoName, ceoPhone, ceoEmail
+        organizationname, contactname, contactemail, contactphone,
+        addressstreet, addresscity, addressprovince, addresspostalcode,
+        ceoname, ceophone, ceoemail
     } = req.body;
 
-    if (!organizationName) {
+    if (!organizationname) {
         return res.status(400).json({ success: false, message: 'Organization Name is required for update.' });
     }
 
@@ -114,14 +114,14 @@ router.put('/:id', authenticateToken, checkSuperAdmin, async (req, res) => {
             `UPDATE Organizations SET 
                 OrganizationName = $1, ContactName = $2, ContactEmail = $3, ContactPhone = $4, 
                 AddressStreet = $5, AddressCity = $6, AddressProvince = $7, AddressPostalCode = $8, 
-                MainPhone = $9, CEOName = $10, CEOPhone = $11, CEOEmail = $12, 
+                CEOName = $9, CEOPhone = $10, CEOEmail = $11, 
                 UpdatedAt = CURRENT_TIMESTAMP
-             WHERE OrganizationID = $13
+             WHERE OrganizationID = $12
              RETURNING *`,
             [
-                organizationName, contactName, contactEmail, contactPhone, 
-                addressStreet, addressCity, addressProvince, addressPostalCode, 
-                mainPhone, ceoName, ceoPhone, ceoEmail, 
+                organizationname, contactname, contactemail, contactphone, 
+                addressstreet, addresscity, addressprovince, addresspostalcode, 
+                ceoname, ceophone, ceoemail, 
                 id 
             ]
         );

@@ -18,9 +18,11 @@ CREATE TABLE Users (
     FirstName VARCHAR(255),
     LastName VARCHAR(255),
     Email VARCHAR(255) UNIQUE,
+    Phone VARCHAR(20),
     OrganizationID INT,
     CreatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UpdatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    -- FOREIGN KEY (OrganizationID) REFERENCES Organizations(OrganizationID) -- Commented out: Defined later
 );
 
 -- Create Organizations table
@@ -35,7 +37,7 @@ CREATE TABLE Organizations (
     AddressCity VARCHAR(100),
     AddressProvince VARCHAR(50), -- Or CHAR(2) depending on standard
     AddressPostalCode VARCHAR(10),
-    MainPhone VARCHAR(20),
+    -- MainPhone VARCHAR(20), -- Removed
     -- New CEO Fields
     CEOName VARCHAR(255),
     CEOPhone VARCHAR(20),
@@ -44,7 +46,7 @@ CREATE TABLE Organizations (
     UpdatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Add foreign key to Users table
+-- Add foreign key to Users table (Moved Here - After Organizations is created)
 ALTER TABLE Users 
 ADD CONSTRAINT fk_organization 
 FOREIGN KEY (OrganizationID) 
@@ -54,11 +56,11 @@ REFERENCES Organizations(OrganizationID);
 CREATE TABLE Instructors (
     InstructorID SERIAL PRIMARY KEY,
     UserID INT UNIQUE NOT NULL,
+    FOREIGN KEY (UserID) REFERENCES Users(UserID) ON DELETE CASCADE,
     Availability JSON,
     Certifications TEXT[],
     CreatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    UpdatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (UserID) REFERENCES Users(UserID)
+    UpdatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Create CourseTypes table
@@ -156,12 +158,19 @@ INSERT INTO CourseTypes (CourseTypeName, Description, Duration, MaxStudents) VAL
 ('Pediatric Advanced Life Support', 'Specialized pediatric life support training', 8, 10);
 
 -- Insert test users
-INSERT INTO Users (Username, Password, Role, FirstName, LastName, Email) VALUES
-('instructor', 'test123', 'Instructor', 'John', 'Doe', 'instructor@example.com'),
-('orgadmin', 'test123', 'Organization', 'Jane', 'Smith', 'orgadmin@example.com'),
-('courseadmin', 'test123', 'Admin', 'Mike', 'Johnson', 'courseadmin@example.com'),
-('actadmin', 'test123', 'Accounting', 'Sarah', 'Wilson', 'actadmin@example.com');
+INSERT INTO Users (Username, Password, Role, FirstName, LastName, Email, Phone) VALUES
+('instructor', 'test123', 'Instructor', 'John', 'Doe', 'instructor@example.com', NULL),
+('orgadmin', 'test123', 'Organization', 'Jane', 'Smith', 'orgadmin@example.com', NULL),
+('courseadmin', 'test123', 'Admin', 'Michael', 'Johnson', 'michael.j@example.com', NULL),
+('actadmin', 'test123', 'Accounting', 'Sarah', 'Wilson', 'actadmin@example.com', NULL);
 
 -- Insert default SuperAdmin user
-INSERT INTO Users (Username, Password, Role, FirstName, LastName, Email) VALUES
-('superadmin', 'test123', 'SuperAdmin', 'Super', 'Admin', 'superadmin@example.com'); 
+INSERT INTO Users (Username, Password, Role, FirstName, LastName, Email, Phone) VALUES
+('superadmin', 'test123', 'SuperAdmin', 'Super', 'Admin', 'superadmin@example.com', NULL);
+
+-- Define User-Organization Foreign Key after both tables exist
+ALTER TABLE Users DROP CONSTRAINT IF EXISTS fk_organization;
+ALTER TABLE Users 
+ADD CONSTRAINT fk_organization 
+FOREIGN KEY (OrganizationID) 
+REFERENCES Organizations(OrganizationID); 
