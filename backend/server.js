@@ -1,17 +1,27 @@
 const express = require('express');
 const cors = require('cors');
-const db = require('./db');
 const http = require('http'); // Import Node's http module
 const { Server } = require("socket.io"); // Import socket.io Server
 require('dotenv').config();
 const { pool } = require('./db'); // Import the pool for logging
 
+console.log('Starting server setup...'); // Log start
+
 const app = express();
 const server = http.createServer(app); // Create HTTP server from Express app
+
+// Add detailed logging for pool errors
+pool.on('error', (err, client) => {
+  console.error('[DATABASE POOL ERROR] Unexpected error on idle client', err);
+  // process.exit(-1); // Optional: exit if pool error is critical
+});
+console.log('Database pool error listener attached.');
+
 // Attach socket.io to the HTTP server
 const io = new Server(server, {
   cors: { origin: "*" } // Simplified CORS for testing
 });
+console.log('Socket.IO server created.');
 
 // const port = process.env.PORT || 3001; // Moved port definition lower
 
@@ -20,6 +30,7 @@ const userSockets = new Map();
 
 app.use(cors());
 app.use(express.json());
+console.log('Middleware applied (cors, express.json).');
 
 // Authentication middleware - Make it async to query DB
 const authenticateToken = async (req, res, next) => {
@@ -37,7 +48,7 @@ const authenticateToken = async (req, res, next) => {
 
         // Query to find associated OrganizationID based on UserID
         // Adjust the table and column names if your schema is different
-        const orgQueryResult = await db.query(
+        const orgQueryResult = await pool.query(
             'SELECT OrganizationID FROM Users WHERE UserID = $1',
             [userId]
         );
@@ -56,11 +67,12 @@ const authenticateToken = async (req, res, next) => {
     }
 };
 
-// Test database connection
+// Test database connection - Enhanced
 app.get('/api/test', async (req, res) => {
     console.log('GET /api/test received');
     try {
         // Test database connection
+        console.log('Testing database connection...');
         const dbResult = await pool.query('SELECT NOW()');
         console.log('Database test query successful:', dbResult.rows[0]);
         res.json({ message: 'Backend is running!', dbTime: dbResult.rows[0].now });
@@ -79,7 +91,7 @@ app.post('/api/auth/login', async (req, res) => {
     }
 
     try {
-        const result = await db.query(
+        const result = await pool.query(
             'SELECT UserID, Username, Role, FirstName, LastName, OrganizationID FROM Users WHERE Username = $1 AND Password = $2',
             [username, password]
         );
@@ -112,7 +124,7 @@ app.post('/api/auth/login', async (req, res) => {
 // Get all courses with related information
 app.get('/api/courses', async (req, res) => {
     try {
-        const result = await db.query(`
+        const result = await pool.query(`
             SELECT 
                 c.CourseID,
                 c.CourseNumber,
@@ -148,7 +160,7 @@ app.get('/api/courses', async (req, res) => {
 // Get course details including students
 app.get('/api/courses/:id', async (req, res) => {
     try {
-        const courseResult = await db.query(`
+        const courseResult = await pool.query(`
             SELECT 
                 c.*,
                 ct.CourseTypeName,
@@ -163,7 +175,7 @@ app.get('/api/courses/:id', async (req, res) => {
             WHERE c.CourseID = $1
         `, [req.params.id]);
 
-        const studentsResult = await db.query(`
+        const studentsResult = await pool.query(`
             SELECT * FROM Students WHERE CourseID = $1
         `, [req.params.id]);
 
@@ -182,7 +194,7 @@ app.get('/api/courses/:id', async (req, res) => {
 // Get instructor schedule
 app.get('/api/instructors/:id/schedule', async (req, res) => {
     try {
-        const result = await db.query(`
+        const result = await pool.query(`
             SELECT 
                 c.CourseID,
                 c.CourseNumber,
@@ -206,7 +218,7 @@ app.get('/api/instructors/:id/schedule', async (req, res) => {
 // Get organization's courses
 app.get('/api/organizations/:id/courses', authenticateToken, async (req, res) => {
     try {
-        const result = await db.query(`
+        const result = await pool.query(`
             SELECT 
                 c.CourseID, c.CreatedAt AS SystemDate, c.CourseNumber, c.DateRequested, c.DateScheduled, 
                 c.Location, c.Status, c.Notes, c.StudentsRegistered,
@@ -242,7 +254,7 @@ app.post('/api/instructor/availability', authenticateToken, async (req, res) => 
         const userId = req.user.userid; // Get the UserID from the token/middleware
 
         // 1. Find the InstructorID based on the UserID
-        const instructorResult = await db.query(
+        const instructorResult = await pool.query(
             'SELECT InstructorID FROM Instructors WHERE UserID = $1',
             [userId]
         );
@@ -253,7 +265,7 @@ app.post('/api/instructor/availability', authenticateToken, async (req, res) => 
         const instructorId = instructorResult.rows[0].instructorid; // Correct InstructorID
 
         // 2. Insert using the correct InstructorID
-        const result = await db.query(
+        const result = await pool.query(
             'INSERT INTO InstructorAvailability (InstructorID, AvailableDate) VALUES ($1, $2) RETURNING *',
             [instructorId, date] // Use the fetched instructorId
         );
@@ -275,7 +287,7 @@ app.delete('/api/instructor/availability/:date', authenticateToken, async (req, 
         const userId = req.user.userid; // Get the UserID from the token/middleware
 
         // 1. Find the InstructorID based on the UserID
-        const instructorResult = await db.query(
+        const instructorResult = await pool.query(
             'SELECT InstructorID FROM Instructors WHERE UserID = $1',
             [userId]
         );
@@ -286,7 +298,7 @@ app.delete('/api/instructor/availability/:date', authenticateToken, async (req, 
         const instructorId = instructorResult.rows[0].instructorid; // Correct InstructorID
 
         // 2. Delete using the correct InstructorID
-        const deleteResult = await db.query(
+        const deleteResult = await pool.query(
             'DELETE FROM InstructorAvailability WHERE InstructorID = $1 AND AvailableDate = $2',
             [instructorId, date] // Use the fetched instructorId
         );
@@ -309,7 +321,7 @@ app.get('/api/instructor/availability', authenticateToken, async (req, res) => {
         const userId = req.user.userid; // Get the UserID from the token/middleware
 
         // 1. Find the InstructorID based on the UserID
-        const instructorResult = await db.query(
+        const instructorResult = await pool.query(
             'SELECT InstructorID FROM Instructors WHERE UserID = $1',
             [userId]
         );
@@ -320,7 +332,7 @@ app.get('/api/instructor/availability', authenticateToken, async (req, res) => {
         const instructorId = instructorResult.rows[0].instructorid; // Correct InstructorID
 
         // 2. Fetch availability using the correct InstructorID
-        const result = await db.query(
+        const result = await pool.query(
             'SELECT AvailableDate FROM InstructorAvailability WHERE InstructorID = $1',
             [instructorId] // Use the fetched instructorId
         );
@@ -338,14 +350,14 @@ app.get('/api/instructor/classes', authenticateToken, async (req, res) => {
     try {
         const userId = req.user.userid; // Get UserID
         // 1. Find InstructorID
-        const instructorResult = await db.query('SELECT InstructorID FROM Instructors WHERE UserID = $1', [userId]);
+        const instructorResult = await pool.query('SELECT InstructorID FROM Instructors WHERE UserID = $1', [userId]);
         if (instructorResult.rows.length === 0) {
             return res.json({ success: true, classes: [] }); // Return empty if not an instructor
         }
         const instructorId = instructorResult.rows[0].instructorid;
 
         // 2. Query Courses table for this instructor where status is Scheduled
-        const result = await db.query(`
+        const result = await pool.query(`
             SELECT 
                 c.CourseID, c.CourseNumber, c.DateScheduled, c.Location, c.Status,
                 c.StudentsRegistered,
@@ -384,7 +396,7 @@ app.post('/api/instructor/classes', authenticateToken, async (req, res) => {
         } = req.body;
         const instructorId = req.user.userid;
 
-        const result = await db.query(`
+        const result = await pool.query(`
             INSERT INTO scheduledclasses (
                 instructorid,
                 organizationid,
@@ -407,7 +419,7 @@ app.post('/api/instructor/classes', authenticateToken, async (req, res) => {
 // --- Course Types Endpoint ---
 app.get('/api/course-types', async (req, res) => {
     try {
-        const result = await db.query('SELECT CourseTypeID, CourseTypeName FROM CourseTypes ORDER BY CourseTypeName');
+        const result = await pool.query('SELECT CourseTypeID, CourseTypeName FROM CourseTypes ORDER BY CourseTypeName');
         res.json({ success: true, courseTypes: result.rows });
     } catch (err) {
         console.error('Error fetching course types:', err);
@@ -433,10 +445,10 @@ app.post('/api/courses/request', authenticateToken, async (req, res) => {
 
     try {
         // Query for Organization NAME instead of non-existent code
-        const orgResult = await db.query('SELECT OrganizationName FROM Organizations WHERE OrganizationID = $1', [organizationId]);
+        const orgResult = await pool.query('SELECT OrganizationName FROM Organizations WHERE OrganizationID = $1', [organizationId]);
         
         // Query for CourseType NAME instead of non-existent code
-        const typeResult = await db.query('SELECT CourseTypeName FROM CourseTypes WHERE CourseTypeID = $1', [courseTypeId]);
+        const typeResult = await pool.query('SELECT CourseTypeName FROM CourseTypes WHERE CourseTypeID = $1', [courseTypeId]);
         
         if (orgResult.rows.length === 0 || typeResult.rows.length === 0) {
             return res.status(400).json({ success: false, message: 'Invalid Organization or Course Type ID' });
@@ -448,7 +460,7 @@ app.post('/api/courses/request', authenticateToken, async (req, res) => {
         const typePart = typeResult.rows[0].coursetypename.substring(0, 3).toUpperCase();
         const courseNumber = `${datePart}-${orgPart}-${typePart}`;
 
-        const result = await db.query(
+        const result = await pool.query(
             `INSERT INTO Courses (OrganizationID, CourseTypeID, DateRequested, Location, StudentsRegistered, Notes, Status, CourseNumber)
              VALUES ($1, $2, $3, $4, $5, $6, 'Pending', $7) RETURNING *`,
             [organizationId, courseTypeId, dateRequested, location, registeredStudents, notes || null, courseNumber]
@@ -479,7 +491,7 @@ app.get('/api/admin/instructor-dashboard', authenticateToken, async (req, res) =
 
     try {
         // 1. Get all Instructors
-        const instructorsRes = await db.query(`
+        const instructorsRes = await pool.query(`
             SELECT i.InstructorID, u.UserID, u.FirstName, u.LastName 
             FROM Instructors i 
             JOIN Users u ON i.UserID = u.UserID
@@ -487,11 +499,11 @@ app.get('/api/admin/instructor-dashboard', authenticateToken, async (req, res) =
         const instructors = instructorsRes.rows;
 
         // 2. Get all Availability
-        const availabilityRes = await db.query('SELECT InstructorID, AvailableDate FROM InstructorAvailability');
+        const availabilityRes = await pool.query('SELECT InstructorID, AvailableDate FROM InstructorAvailability');
         const availability = availabilityRes.rows;
 
         // 3. Get all Scheduled/Completed Courses with Org info
-        const coursesRes = await db.query(`
+        const coursesRes = await pool.query(`
             SELECT 
                 c.CourseID, c.InstructorID, c.OrganizationID, c.DateScheduled, c.Location, 
                 c.StudentsRegistered, c.Notes, c.Status, 
@@ -564,7 +576,7 @@ app.get('/api/admin/instructor-dashboard', authenticateToken, async (req, res) =
 app.get('/api/admin/pending-courses', authenticateToken, async (req, res) => {
     try {
         // Query courses with 'Pending' status, joining with org and course type
-        const result = await db.query(`
+        const result = await pool.query(`
             SELECT 
                 c.CourseID, c.CreatedAt AS SystemDate, c.DateRequested, c.CourseNumber, 
                 c.Location, c.StudentsRegistered, c.Notes, c.Status,
@@ -588,7 +600,7 @@ app.get('/api/admin/pending-courses', authenticateToken, async (req, res) => {
 // --- Admin: Get Scheduled Courses ---
 app.get('/api/admin/scheduled-courses', authenticateToken, async (req, res) => {
     try {
-        const result = await db.query(`
+        const result = await pool.query(`
             SELECT 
                 c.CourseID, c.CreatedAt AS SystemDate, c.DateRequested, c.DateScheduled, c.CourseNumber, 
                 c.Location, c.StudentsRegistered, c.Notes, c.Status,
@@ -613,7 +625,7 @@ app.get('/api/admin/scheduled-courses', authenticateToken, async (req, res) => {
 // --- Admin: Get Completed Courses ---
 app.get('/api/admin/completed-courses', authenticateToken, async (req, res) => {
     try {
-        const result = await db.query(`
+        const result = await pool.query(`
             SELECT 
                 c.CourseID, c.CreatedAt AS SystemDate, c.DateRequested, c.DateScheduled, c.CourseNumber, 
                 c.Location, c.StudentsRegistered, c.Notes, c.Status, 
@@ -652,7 +664,7 @@ app.post('/api/courses/:courseId/students', authenticateToken, async (req, res) 
     // TODO: Add authorization check - ensure the user (Org or Admin) has rights to modify this course
 
     // Get a client from the pool for transaction using the correct export
-    const client = await db.pool.connect(); // Use db.pool.connect()
+    const client = await pool.connect(); // Use pool.connect()
     try {
         await client.query('BEGIN');
 
@@ -692,7 +704,7 @@ app.get('/api/instructor/todays-classes', authenticateToken, async (req, res) =>
     try {
         const userId = req.user.userid;
         // Find InstructorID
-        const instructorResult = await db.query('SELECT InstructorID FROM Instructors WHERE UserID = $1', [userId]);
+        const instructorResult = await pool.query('SELECT InstructorID FROM Instructors WHERE UserID = $1', [userId]);
         if (instructorResult.rows.length === 0) {
             return res.status(403).json({ success: false, message: 'User is not an instructor' });
         }
@@ -701,7 +713,7 @@ app.get('/api/instructor/todays-classes', authenticateToken, async (req, res) =>
         // Get current date in YYYY-MM-DD format (consider timezone)
         const today = new Date().toISOString().split('T')[0]; 
 
-        const result = await db.query(`
+        const result = await pool.query(`
             SELECT 
                 c.CourseID, c.DateScheduled, c.CourseNumber, c.Location, c.Status, 
                 o.OrganizationName, ct.CourseTypeName, c.StudentsRegistered
@@ -725,7 +737,7 @@ app.get('/api/courses/:courseId/students', authenticateToken, async (req, res) =
     const { courseId } = req.params;
     try {
         // TODO: Add authorization check - ensure user (instructor/admin/org) can view students for this course
-        const result = await db.query(
+        const result = await pool.query(
             'SELECT StudentID, FirstName, LastName, Email, Attendance FROM Students WHERE CourseID = $1 ORDER BY LastName, FirstName',
             [courseId]
         );
@@ -745,7 +757,7 @@ app.put('/api/students/:studentId/attendance', authenticateToken, async (req, re
          return res.status(400).json({ success: false, message: 'Invalid attendance value provided.' });
     }
 
-    const client = await db.pool.connect(); // Get client for transaction
+    const client = await pool.connect(); // Get client for transaction
     try {
         await client.query('BEGIN');
         
@@ -805,7 +817,7 @@ app.post('/api/courses/:courseId/add-student', authenticateToken, async (req, re
 
     try {
         // Insert student, potentially handle duplicates based on CourseID/Email if needed
-        const result = await db.query(
+        const result = await pool.query(
             `INSERT INTO Students (CourseID, FirstName, LastName, Email, Attendance) 
              VALUES ($1, $2, $3, $4, FALSE) -- Default attendance to false
              RETURNING *`,
@@ -829,14 +841,14 @@ app.put('/api/courses/:courseId/complete', authenticateToken, async (req, res) =
 
     try {
         // Find InstructorID first
-        const instructorResult = await db.query('SELECT InstructorID FROM Instructors WHERE UserID = $1', [userId]);
+        const instructorResult = await pool.query('SELECT InstructorID FROM Instructors WHERE UserID = $1', [userId]);
         if (instructorResult.rows.length === 0) {
             return res.status(403).json({ success: false, message: 'User is not an instructor' });
         }
         const instructorId = instructorResult.rows[0].instructorid;
 
         // Update course status only if it belongs to this instructor and is 'Scheduled'
-        const result = await db.query(
+        const result = await pool.query(
             `UPDATE Courses SET Status = 'Completed', UpdatedAt = CURRENT_TIMESTAMP 
              WHERE CourseID = $1 AND InstructorID = $2 AND Status = 'Scheduled' RETURNING CourseID`,
             [courseId, instructorId]
@@ -858,13 +870,13 @@ app.put('/api/courses/:courseId/complete', authenticateToken, async (req, res) =
 app.get('/api/instructor/completed-classes', authenticateToken, async (req, res) => {
      try {
         const userId = req.user.userid;
-        const instructorResult = await db.query('SELECT InstructorID FROM Instructors WHERE UserID = $1', [userId]);
+        const instructorResult = await pool.query('SELECT InstructorID FROM Instructors WHERE UserID = $1', [userId]);
         if (instructorResult.rows.length === 0) {
             return res.status(403).json({ success: false, message: 'User is not an instructor' });
         }
         const instructorId = instructorResult.rows[0].instructorid;
 
-        const result = await db.query(`
+        const result = await pool.query(`
             SELECT 
                 c.CourseID, c.DateScheduled, c.CourseNumber, c.Location, c.Status, 
                 o.OrganizationName, ct.CourseTypeName, c.StudentsRegistered 
@@ -887,7 +899,7 @@ app.get('/api/instructor/completed-classes', authenticateToken, async (req, res)
 // --- Admin: Get All Instructors ---
 app.get('/api/admin/instructors', authenticateToken, async (req, res) => {
     try {
-        const result = await db.query(`
+        const result = await pool.query(`
             SELECT i.InstructorID, u.FirstName, u.LastName 
             FROM Instructors i 
             JOIN Users u ON i.UserID = u.UserID 
@@ -913,7 +925,7 @@ app.put('/api/admin/schedule-course/:courseId', authenticateToken, async (req, r
     // Requires fetching instructor availability
 
     try {
-        const result = await db.query(
+        const result = await pool.query(
             `UPDATE Courses 
              SET InstructorID = $1, DateScheduled = $2, Status = 'Scheduled', UpdatedAt = CURRENT_TIMESTAMP 
              WHERE CourseID = $3 AND Status = 'Pending' 
@@ -930,7 +942,7 @@ app.put('/api/admin/schedule-course/:courseId', authenticateToken, async (req, r
         // --- Emit WebSocket Event --- 
         try {
              // Find the UserID associated with the InstructorID
-            const userRes = await db.query('SELECT UserID FROM Instructors WHERE InstructorID = $1', [instructorId]);
+            const userRes = await pool.query('SELECT UserID FROM Instructors WHERE InstructorID = $1', [instructorId]);
             if (userRes.rows.length > 0) {
                 const instructorUserId = userRes.rows[0].userid.toString(); // Ensure string key
                 console.log(`[Schedule Course] Found Instructor UserID: ${instructorUserId}`); // Log UserID
@@ -959,44 +971,76 @@ app.put('/api/admin/schedule-course/:courseId', authenticateToken, async (req, r
     }
 });
 
-// --- Socket.IO Connection Handling ---
+// --- Socket.IO Connection Handling (Enhanced Logging) ---
 io.on('connection', (socket) => {
-  console.log('Socket connected:', socket.id);
+    console.log(`[Socket.IO] Connection established: ${socket.id}`);
 
-  // Handler for client identifying itself (e.g., after login)
-  socket.on('identify', (userId) => {
-    if (userId) {
-      console.log(`Socket ${socket.id} identified as UserID: ${userId}`);
-      userSockets.set(userId.toString(), socket.id); // Store mapping (ensure userId is string)
-      // console.log('Current user sockets:', userSockets);
-    } else {
-       console.log(`Socket ${socket.id} tried to identify without userId.`);
-    }
-  });
+    socket.on('identify', (userId) => {
+        try {
+            if (!userId) {
+                console.warn(`[Socket.IO] Identify event received with invalid userId from ${socket.id}`);
+                return;
+            }
+            const userIdStr = userId.toString(); // Ensure string key
+            console.log(`[Socket.IO] Socket ${socket.id} identified as UserID: ${userIdStr}`);
+            userSockets.set(userIdStr, socket.id);
+            console.log(`[Socket.IO] UserID ${userIdStr} added to map. Current map size: ${userSockets.size}`);
+            socket.join(userIdStr); // Join room based on userId
+        } catch (error) {
+            console.error(`[Socket.IO] Error in 'identify' handler for socket ${socket.id}:`, error);
+        }
+    });
 
-  socket.on('disconnect', () => {
-    console.log('Socket disconnected:', socket.id);
-    // Find and remove user from mapping on disconnect
-    for (let [userId, socketId] of userSockets.entries()) {
-      if (socketId === socket.id) {
-        userSockets.delete(userId);
-        console.log(`Removed UserID ${userId} from socket map.`);
-        break;
-      }
-    }
-    // console.log('Current user sockets:', userSockets);
-  });
+    socket.on('disconnect', (reason) => {
+        try {
+            console.log(`[Socket.IO] Socket disconnected: ${socket.id}, Reason: ${reason}`);
+            let userIdToRemove = null;
+            for (const [userId, socketId] of userSockets.entries()) {
+                if (socketId === socket.id) {
+                    userIdToRemove = userId;
+                    break;
+                }
+            }
+            if (userIdToRemove !== null) {
+                userSockets.delete(userIdToRemove);
+                console.log(`[Socket.IO] Removed UserID ${userIdToRemove} from socket map. Current map size: ${userSockets.size}`);
+            } else {
+                console.log(`[Socket.IO] Disconnected socket ${socket.id} not found in map.`);
+            }
+        } catch (error) {
+             console.error(`[Socket.IO] Error in 'disconnect' handler for socket ${socket.id}:`, error);
+        }
+    });
+
+    socket.on('error', (err) => {
+        console.error(`[Socket.IO] Error on socket ${socket.id}:`, err);
+    });
 });
+console.log('Socket.IO event handlers attached.');
 // --- End Socket.IO --- 
 
-// Start Server
-const port = process.env.PORT || 3001; // Default to 3001 if not set
-console.log(`[PORT CHECK] process.env.PORT is: ${process.env.PORT}, Determined port: ${port}`); // Added explicit log
+// --- Add Global Error Handlers Here ---
+process.on('uncaughtException', (err, origin) => {
+  console.error(`[FATAL] Uncaught Exception: ${err.message}`);
+  console.error('Origin:', origin);
+  console.error('Stack:', err.stack);
+  // Consider exiting gracefully: pool.end().then(() => process.exit(1)); 
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('[FATAL] Unhandled Rejection at:', promise);
+  console.error('Reason:', reason);
+});
+console.log('Global error handlers (uncaughtException, unhandledRejection) attached.');
+// --- End Global Error Handlers ---
+
+// --- Start Server ---
+const port = process.env.PORT || 3001; // Define port here, default to 3001
+console.log(`[PORT CHECK] process.env.PORT is: ${process.env.PORT}, Determined port: ${port}`);
 
 try {
   console.log(`Attempting to start server on port ${port}...`);
-  // Use the HTTP server (which includes the Express app) for Socket.IO
-  server.listen(port, '0.0.0.0', () => {
+  server.listen(port, '0.0.0.0', () => { // Use the HTTP server instance
     console.log(`---> Server successfully running on port ${port} <---`);
     console.log('Ready for connections.');
   });
@@ -1005,25 +1049,14 @@ try {
   // process.exit(1); // Exit if server cannot start
 }
 
-// Commented out duplicate listen call
-// app.listen(port, '0.0.0.0', () => {
-//     console.log(`Server running on port ${port}`);
-// }); 
-
-// Add detailed logging for pool errors
-pool.on('error', (err, client) => {
-  console.error('[DATABASE POOL ERROR] Unexpected error on idle client', err);
-  // process.exit(-1); // Optional: exit if pool error is critical
-});
-
-console.log('Database pool error listener attached.');
+// Ensure the duplicate app.listen is removed/commented
+// app.listen(port, '0.0.0.0', () => { ... });
 
 // Add global error handlers
 process.on('uncaughtException', (err, origin) => {
   console.error(`[FATAL] Uncaught Exception: ${err.message}`);
   console.error('Origin:', origin);
   console.error('Stack:', err.stack);
-  // It's generally recommended to exit gracefully after an uncaught exception
   // pool.end().then(() => process.exit(1)); 
 });
 
