@@ -5,7 +5,7 @@ const { pool } = require('./index');
 async function initializeDatabase() {
     try {
         // Read the schema file
-        const schemaPath = path.join(__dirname, 'schema.sql');
+        const schemaPath = path.join(__dirname, '..', 'database_schema.sql');
         const schema = fs.readFileSync(schemaPath, 'utf8');
 
         // Execute the schema

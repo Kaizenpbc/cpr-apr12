@@ -1,0 +1,15 @@
+{
+  "watch": ["*.js"], 
+  "ext": "js,json",
+  "ignore": [
+    "node_modules/", 
+    ".git/",
+    "*.log",
+    "*.txt",
+    "data/", 
+    "build/", 
+    "dist/"
+  ],
+  "verbose": true, 
+  "delay": "500"
+} 

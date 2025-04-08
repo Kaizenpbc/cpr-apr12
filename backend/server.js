@@ -3,18 +3,17 @@ const cors = require('cors');
 const db = require('./db');
 const http = require('http'); // Import Node's http module
 const { Server } = require("socket.io"); // Import socket.io Server
+require('dotenv').config();
+const { pool } = require('./db'); // Import the pool for logging
 
 const app = express();
 const server = http.createServer(app); // Create HTTP server from Express app
 // Attach socket.io to the HTTP server
 const io = new Server(server, {
-  cors: {
-    origin: "http://localhost:3000", // Allow frontend origin
-    methods: ["GET", "POST", "PUT", "DELETE"] // Allowed methods
-  }
+  cors: { origin: "*" } // Simplified CORS for testing
 });
 
-const port = process.env.PORT || 3001;
+// const port = process.env.PORT || 3001; // Moved port definition lower
 
 // Simple in-memory store for user sockets (Replace with Redis/DB in production)
 const userSockets = new Map(); 
@@ -59,11 +58,15 @@ const authenticateToken = async (req, res, next) => {
 
 // Test database connection
 app.get('/api/test', async (req, res) => {
+    console.log('GET /api/test received');
     try {
-        const result = await db.query('SELECT NOW()');
-        res.json({ success: true, timestamp: result.rows[0].now });
-    } catch (err) {
-        res.status(500).json({ success: false, error: err.message });
+        // Test database connection
+        const dbResult = await pool.query('SELECT NOW()');
+        console.log('Database test query successful:', dbResult.rows[0]);
+        res.json({ message: 'Backend is running!', dbTime: dbResult.rows[0].now });
+    } catch (dbError) {
+        console.error('[API TEST ERROR] Database query failed:', dbError);
+        res.status(500).json({ message: 'Backend running, but DB connection failed.' });
     }
 });
 
@@ -986,7 +989,53 @@ io.on('connection', (socket) => {
 });
 // --- End Socket.IO --- 
 
-// Start the HTTP server instead of the Express app directly
-server.listen(port, () => { // Changed from app.listen to server.listen
-    console.log(`Server running on port ${port}`);
-}); 
+// Start Server
+const port = process.env.PORT || 3001; // Default to 3001 if not set
+console.log(`[PORT CHECK] process.env.PORT is: ${process.env.PORT}, Determined port: ${port}`); // Added explicit log
+
+try {
+  console.log(`Attempting to start server on port ${port}...`);
+  // Use the HTTP server (which includes the Express app) for Socket.IO
+  server.listen(port, '0.0.0.0', () => {
+    console.log(`---> Server successfully running on port ${port} <---`);
+    console.log('Ready for connections.');
+  });
+} catch (listenError) {
+  console.error(`[FATAL] Failed to start server listening on port ${port}:`, listenError);
+  // process.exit(1); // Exit if server cannot start
+}
+
+// Commented out duplicate listen call
+// app.listen(port, '0.0.0.0', () => {
+//     console.log(`Server running on port ${port}`);
+// }); 
+
+// Add detailed logging for pool errors
+pool.on('error', (err, client) => {
+  console.error('[DATABASE POOL ERROR] Unexpected error on idle client', err);
+  // process.exit(-1); // Optional: exit if pool error is critical
+});
+
+console.log('Database pool error listener attached.');
+
+// Add global error handlers
+process.on('uncaughtException', (err, origin) => {
+  console.error(`[FATAL] Uncaught Exception: ${err.message}`);
+  console.error('Origin:', origin);
+  console.error('Stack:', err.stack);
+  // It's generally recommended to exit gracefully after an uncaught exception
+  // pool.end().then(() => process.exit(1)); 
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('[FATAL] Unhandled Rejection at:', promise);
+  console.error('Reason:', reason);
+  // Application specific logging, throwing an error, or other logic here
+});
+
+console.log('Global error handlers (uncaughtException, unhandledRejection) attached.');
+
+// Commented out duplicate listen call
+// app.listen(port, '0.0.0.0', () => {
+//     console.log(`Server running on port ${port}`);
+// }); 

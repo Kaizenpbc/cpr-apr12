@@ -1,3 +1,14 @@
+-- Drop existing tables in reverse order of creation due to dependencies
+DROP TABLE IF EXISTS Students CASCADE;
+DROP TABLE IF EXISTS Invoices CASCADE;
+DROP TABLE IF EXISTS InstructorAvailability CASCADE;
+DROP TABLE IF EXISTS ScheduledClasses CASCADE;
+DROP TABLE IF EXISTS Courses CASCADE;
+DROP TABLE IF EXISTS CourseTypes CASCADE;
+DROP TABLE IF EXISTS Instructors CASCADE;
+DROP TABLE IF EXISTS Users CASCADE; -- Depends on Organizations
+DROP TABLE IF EXISTS Organizations CASCADE;
+
 -- Create Users table
 CREATE TABLE Users (
     UserID SERIAL PRIMARY KEY,
@@ -64,7 +75,7 @@ CREATE TABLE Courses (
     StudentsRegistered INT DEFAULT 0,
     Notes TEXT,
     Status VARCHAR(50) NOT NULL DEFAULT 'Pending' 
-        CHECK (Status IN ('Pending', 'Scheduled', 'Completed', 'Cancelled')),
+        CHECK (Status IN ('Pending', 'Scheduled', 'Completed', 'Cancelled', 'Billing Ready', 'Invoiced')),
     CreatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UpdatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (OrganizationID) REFERENCES Organizations(OrganizationID),
