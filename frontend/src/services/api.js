@@ -345,4 +345,57 @@ export const scheduleCourseAdmin = async (courseId, scheduleData) => {
     }
 };
 
+// Admin: Mark course ready for billing
+export const markCourseReadyForBilling = async (courseId) => {
+    try {
+        const response = await api.put(`/admin/courses/${courseId}/ready-for-billing`);
+        return response; // Expect { success: true, message: ... }
+    } catch (error) {
+        console.error(`Error marking course ${courseId} ready for billing:`, error);
+        throw error?.message ? new Error(error.message) : error;
+    }
+};
+
+// Accounting: Get billing queue
+export const getBillingQueue = async () => {
+    try {
+        const response = await api.get('/accounting/billing-queue');
+        if (response && response.success) {
+            return response.courses;
+        } else {
+            throw new Error(response?.message || 'Failed to fetch billing queue');
+        }
+    } catch (error) {
+        console.error('Error fetching billing queue:', error);
+        throw error?.message ? new Error(error.message) : error;
+    }
+};
+
+// Accounting: Create Invoice
+export const createInvoice = async (courseId) => {
+    try {
+        // No body needed, backend calculates amount based on courseId
+        const response = await api.post(`/accounting/create-invoice/${courseId}`);
+        return response; // Expect { success: true, message: ..., invoice: ... }
+    } catch (error) {
+        console.error(`Error creating invoice for course ${courseId}:`, error);
+        throw error?.message ? new Error(error.message) : error;
+    }
+};
+
+// Accounting: Get All Invoices
+export const getInvoices = async () => {
+    try {
+        const response = await api.get('/accounting/invoices');
+        if (response && response.success) {
+            return response.invoices;
+        } else {
+            throw new Error(response?.message || 'Failed to fetch invoices');
+        }
+    } catch (error) {
+        console.error('Error fetching invoices:', error);
+        throw error?.message ? new Error(error.message) : error;
+    }
+};
+
 export default api; 

@@ -255,9 +255,22 @@ const CourseAdminPortal = () => {
         setSelectedCourseForView(null);
     };
 
-    const handleBillClick = (courseId) => {
-        console.log("Bill course clicked:", courseId);
-        alert("Billing functionality not yet implemented.");
+    const handleBillClick = async (courseId) => {
+        console.log("Marking course ready for billing:", courseId);
+        // Consider adding a confirmation dialog here?
+        try {
+            const response = await api.markCourseReadyForBilling(courseId);
+            if (response.success) {
+                setSnackbar({ open: true, message: response.message || 'Course marked ready for billing!', severity: 'success' });
+                // Refresh the completed courses list (the course should disappear)
+                loadCompletedCourses(); 
+            } else {
+                setSnackbar({ open: true, message: response.message || 'Failed to mark course.', severity: 'error' });
+            }
+        } catch (err) {
+            console.error("Error marking course for billing:", err);
+            setSnackbar({ open: true, message: err.message || 'An error occurred.', severity: 'error' });
+        }
     };
 
     const handleInstructorFilterChange = (event) => {
