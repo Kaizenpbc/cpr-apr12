@@ -14,7 +14,7 @@ CREATE TABLE Users (
     UserID SERIAL PRIMARY KEY,
     Username VARCHAR(255) UNIQUE NOT NULL,
     Password VARCHAR(255) NOT NULL,
-    Role VARCHAR(50) NOT NULL CHECK (Role IN ('Instructor', 'Organization', 'Admin', 'Accounting')),
+    Role VARCHAR(50) NOT NULL CHECK (Role IN ('Instructor', 'Organization', 'Admin', 'Accounting', 'SuperAdmin')),
     FirstName VARCHAR(255),
     LastName VARCHAR(255),
     Email VARCHAR(255) UNIQUE,
@@ -30,6 +30,16 @@ CREATE TABLE Organizations (
     ContactName VARCHAR(255),
     ContactEmail VARCHAR(255),
     ContactPhone VARCHAR(20),
+    -- New Address Fields
+    AddressStreet VARCHAR(255),
+    AddressCity VARCHAR(100),
+    AddressProvince VARCHAR(50), -- Or CHAR(2) depending on standard
+    AddressPostalCode VARCHAR(10),
+    MainPhone VARCHAR(20),
+    -- New CEO Fields
+    CEOName VARCHAR(255),
+    CEOPhone VARCHAR(20),
+    CEOEmail VARCHAR(255),
     CreatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UpdatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -93,7 +103,7 @@ CREATE TABLE Students (
     Attendance BOOLEAN DEFAULT FALSE,
     CreatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UpdatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (CourseID) REFERENCES Courses(CourseID)
+    FOREIGN KEY (CourseID) REFERENCES Courses(CourseID) ON DELETE CASCADE
 );
 
 -- Create Invoices table
@@ -108,22 +118,22 @@ CREATE TABLE Invoices (
     DueDate DATE NOT NULL,
     CreatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UpdatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (CourseID) REFERENCES Courses(CourseID)
+    FOREIGN KEY (CourseID) REFERENCES Courses(CourseID) ON DELETE CASCADE
 );
 
 -- Instructor Availability Table
 CREATE TABLE InstructorAvailability (
-    AvailabilityID INT PRIMARY KEY AUTO_INCREMENT,
+    AvailabilityID SERIAL PRIMARY KEY,
     InstructorID INT NOT NULL,
     AvailableDate DATE NOT NULL,
     CreatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (InstructorID) REFERENCES Users(UserID),
-    UNIQUE KEY unique_instructor_date (InstructorID, AvailableDate)
+    FOREIGN KEY (InstructorID) REFERENCES Users(UserID) ON DELETE CASCADE,
+    UNIQUE (InstructorID, AvailableDate)
 );
 
 -- Scheduled Classes Table
 CREATE TABLE ScheduledClasses (
-    ClassID INT PRIMARY KEY AUTO_INCREMENT,
+    ClassID SERIAL PRIMARY KEY,
     InstructorID INT NOT NULL,
     OrganizationID INT NOT NULL,
     ClassDate DATE NOT NULL,
@@ -132,10 +142,10 @@ CREATE TABLE ScheduledClasses (
     RegisteredStudents INT DEFAULT 0,
     Attendance INT DEFAULT 0,
     Notes TEXT,
-    Status ENUM('Available', 'Scheduled') DEFAULT 'Available',
+    Status VARCHAR(50) DEFAULT 'Available' CHECK (Status IN ('Available', 'Scheduled')),
     CreatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (InstructorID) REFERENCES Users(UserID),
-    FOREIGN KEY (OrganizationID) REFERENCES Organizations(OrganizationID)
+    FOREIGN KEY (InstructorID) REFERENCES Users(UserID) ON DELETE CASCADE,
+    FOREIGN KEY (OrganizationID) REFERENCES Organizations(OrganizationID) ON DELETE CASCADE
 );
 
 -- Insert default course types
@@ -150,4 +160,8 @@ INSERT INTO Users (Username, Password, Role, FirstName, LastName, Email) VALUES
 ('instructor', 'test123', 'Instructor', 'John', 'Doe', 'instructor@example.com'),
 ('orgadmin', 'test123', 'Organization', 'Jane', 'Smith', 'orgadmin@example.com'),
 ('courseadmin', 'test123', 'Admin', 'Mike', 'Johnson', 'courseadmin@example.com'),
-('actadmin', 'test123', 'Accounting', 'Sarah', 'Wilson', 'actadmin@example.com'); 
+('actadmin', 'test123', 'Accounting', 'Sarah', 'Wilson', 'actadmin@example.com');
+
+-- Insert default SuperAdmin user
+INSERT INTO Users (Username, Password, Role, FirstName, LastName, Email) VALUES
+('superadmin', 'test123', 'SuperAdmin', 'Super', 'Admin', 'superadmin@example.com'); 

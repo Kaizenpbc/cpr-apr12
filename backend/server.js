@@ -5,6 +5,12 @@ const { Server } = require("socket.io"); // Import socket.io Server
 require('dotenv').config();
 const { pool } = require('./db'); // Import the pool for logging
 
+// Import route handlers
+// const authRoutes = require('./routes/auth'); // Assuming this structure
+const organizationRoutes = require('./routes/organizations');
+const userRoutes = require('./routes/users');
+const authenticateToken = require('./middleware/authenticateToken'); // Import middleware
+
 console.log('Starting server setup...'); // Log start
 
 const app = express();
@@ -28,44 +34,17 @@ console.log('Socket.IO server created.');
 // Simple in-memory store for user sockets (Replace with Redis/DB in production)
 const userSockets = new Map(); 
 
+// Apply Middleware
+console.log('Applying middleware...');
 app.use(cors());
 app.use(express.json());
+// Note: authenticateToken is applied per-route or per-router
 console.log('Middleware applied (cors, express.json).');
 
-// Authentication middleware - Make it async to query DB
-const authenticateToken = async (req, res, next) => {
-    const authHeader = req.headers['authorization'];
-    const token = authHeader && authHeader.split(' ')[1];
-
-    if (!token) {
-        return res.status(401).json({ success: false, message: 'No token provided' });
-    }
-
-    try {
-        // Assume token is the UserID for now
-        const userId = token;
-        req.user = { userid: userId }; // Set basic user info
-
-        // Query to find associated OrganizationID based on UserID
-        // Adjust the table and column names if your schema is different
-        const orgQueryResult = await pool.query(
-            'SELECT OrganizationID FROM Users WHERE UserID = $1',
-            [userId]
-        );
-
-        if (orgQueryResult.rows.length > 0 && orgQueryResult.rows[0].organizationid) {
-            // If an OrganizationID is found for this user, add it to req.user
-            req.user.organizationId = orgQueryResult.rows[0].organizationid;
-        }
-        // If no OrgID found, req.user.organizationId will remain undefined.
-        // Route-specific checks (like in /api/courses/request) will handle authorization.
-
-        next(); // Proceed to the next middleware or route handler
-    } catch (err) {
-        console.error('Authentication error:', err);
-        return res.status(500).json({ success: false, message: 'Internal error during authentication' });
-    }
-};
+// Mount route handlers
+// app.use('/api/auth', authRoutes); // Example
+app.use('/api/organizations', organizationRoutes);
+app.use('/api/users', userRoutes);
 
 // Test database connection - Enhanced
 app.get('/api/test', async (req, res) => {
@@ -1072,3 +1051,29 @@ console.log('Global error handlers (uncaughtException, unhandledRejection) attac
 // app.listen(port, '0.0.0.0', () => {
 //     console.log(`Server running on port ${port}`);
 // }); 
+
+// --- Delete a Course ---
+app.delete('/api/courses/:id', authenticateToken, async (req, res) => {
+    const { id } = req.params;
+    console.log(`DELETE /api/courses/${id} received`);
+
+    // Optional: Add role-based authorization check if needed
+    // For example: if (req.user.role !== 'Admin') { ... return res.status(403)... }
+
+    try {
+        // Using pool.query which we established is available
+        const result = await pool.query('DELETE FROM Courses WHERE CourseID = $1 RETURNING CourseID', [id]);
+
+        if (result.rowCount === 0) {
+            console.log(`Course ${id} not found for deletion.`);
+            return res.status(404).json({ success: false, message: 'Course not found' });
+        }
+
+        console.log(`Course ${id} deleted successfully.`);
+        res.json({ success: true, message: `Course ${id} deleted successfully.` });
+
+    } catch (err) {
+        console.error(`Error deleting course ${id}:`, err);
+        res.status(500).json({ success: false, message: 'Failed to delete course' });
+    }
+}); 
