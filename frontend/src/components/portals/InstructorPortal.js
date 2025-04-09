@@ -30,6 +30,10 @@ import {
     CircularProgress,
     Checkbox,
     TextField,
+    FormControl,
+    InputLabel,
+    Select,
+    MenuItem,
 } from '@mui/material';
 import {
     CalendarMonth as CalendarIcon,
@@ -61,7 +65,7 @@ const InstructorPortal = () => {
     const [studentsForAttendance, setStudentsForAttendance] = useState([]);
     const [isLoadingStudents, setIsLoadingStudents] = useState(false);
     const [studentsError, setStudentsError] = useState('');
-    const [selectedClassForAttendance, setSelectedClassForAttendance] = useState(null);
+    const [classToManage, setClassToManage] = useState(null);
     const [newStudent, setNewStudent] = useState({ firstName: '', lastName: '', email: '' });
     const [isAddingStudent, setIsAddingStudent] = useState(false);
     const [archivedCourses, setArchivedCourses] = useState([]);
@@ -84,18 +88,43 @@ const InstructorPortal = () => {
                 api.getScheduledClasses()
             ]);
             
-            let newAvailableDates = [];
-            let newScheduledClasses = [];
+            let rawAvailableDates = [];
+            let rawScheduledClasses = [];
 
             if (Array.isArray(availabilityResponse)) { 
-                newAvailableDates = availabilityResponse.map(isoString => new Date(isoString).toDateString());
+                rawAvailableDates = availabilityResponse;
             }
             if (classesResponse && Array.isArray(classesResponse.classes)) {
-                newScheduledClasses = classesResponse.classes.filter(c => c.status !== 'Completed'); 
+                rawScheduledClasses = classesResponse.classes;
             }
-            setAvailableDates(newAvailableDates);
-            setScheduledClasses(newScheduledClasses);
-            console.log('[loadInitialData] State updated');
+
+            const scheduledDatesSet = new Set();
+            rawScheduledClasses.forEach(course => {
+                if (course.datescheduled) {
+                    try {
+                        const dateStr = new Date(course.datescheduled).toISOString().split('T')[0];
+                        scheduledDatesSet.add(dateStr);
+                    } catch (e) {
+                        console.error(`Error parsing scheduled date: ${course.datescheduled}`, e);
+                    }
+                }
+            });
+            console.log('[loadInitialData] Set of scheduled dates (YYYY-MM-DD):', scheduledDatesSet);
+
+            const filteredAvailableDates = rawAvailableDates.filter(dateString => {
+                try {
+                    const availDateStr = new Date(dateString).toISOString().split('T')[0];
+                    return !scheduledDatesSet.has(availDateStr);
+                } catch (e) {
+                    console.error(`Error parsing availability date: ${dateString}`, e);
+                    return false;
+                }
+            });
+            console.log('[loadInitialData] Filtered availability dates:', filteredAvailableDates);
+            
+            setAvailableDates(filteredAvailableDates);
+            setScheduledClasses(rawScheduledClasses);
+            console.log('[loadInitialData] State updated with filtered availability');
             
         } catch (error) {
             console.error('Error loading initial data:', error);
@@ -128,30 +157,6 @@ const InstructorPortal = () => {
             console.log(`[fetchStudentsForClass] Finished for course ${courseId}.`);
         }
     }, [showSnackbar]);
-
-    const loadTodaysClasses = useCallback(async () => {
-        setIsLoadingTodaysClasses(true);
-        setTodaysClassesError('');
-        setStudentsForAttendance([]);
-        setSelectedClassForAttendance(null);
-        console.log('[loadTodaysClasses] Fetching...');
-        try {
-            const data = await api.getTodaysClasses();
-            setTodaysClasses(data || []);
-            console.log('[loadTodaysClasses] State updated:', data || []);
-            if (data && data.length === 1) {
-                fetchStudentsForClass(data[0].courseid);
-                setSelectedClassForAttendance(data[0]);
-            }
-        } catch (err) {
-            console.error('Error loading today\'s classes:', err);
-            setTodaysClassesError(err.message || 'Failed to load today\'s classes.');
-            setTodaysClasses([]);
-        } finally {
-            setIsLoadingTodaysClasses(false);
-            console.log('[loadTodaysClasses] Finished.');
-        }
-    }, [fetchStudentsForClass]);
 
     const loadArchivedCourses = useCallback(async () => {
         setIsLoadingArchive(true);
@@ -187,7 +192,7 @@ const InstructorPortal = () => {
                 loadInitialData(); 
                 // If currently on attendance view, might need to refresh that too
                 if (selectedView === 'attendance') {
-                     loadTodaysClasses();
+                     loadInitialData();
                 }
             };
 
@@ -199,27 +204,35 @@ const InstructorPortal = () => {
                 socket.off('course_assigned', handleCourseAssigned);
             };
         }
-    }, [loadInitialData, socket, showSnackbar, selectedView, loadTodaysClasses]);
+    }, [loadInitialData, socket, showSnackbar, selectedView]);
 
     useEffect(() => {
         console.log(`[useEffect View Change] View changed to: ${selectedView}`);
         setStudentsForAttendance([]);
-        setSelectedClassForAttendance(null);
+        setClassToManage(null);
         setStudentsError('');
-        setTodaysClassesError('');
 
-        if (selectedView === 'attendance') {
-            loadTodaysClasses();
-        } else if (selectedView === 'archive') {
+        if (selectedView === 'archive') {
             loadArchivedCourses();
-        } else if (selectedView === 'classes') {
-            console.log('[useEffect View Change] Reloading initial data for My Classes view...');
+        } else if (selectedView === 'classes' || selectedView === 'availability') {
             loadInitialData();
-        } else if (selectedView === 'availability') {
-            // Optionally reload initial data if it could have changed significantly
-            // loadInitialData();
+        } else if (selectedView === 'attendance') {
+            console.log('[useEffect View Change] Attendance view selected. Data should be loaded by other effect.');
+            if (scheduledClasses.length === 1) {
+                console.log('[useEffect View Change] Auto-selecting the only scheduled class for attendance.');
+                setClassToManage(scheduledClasses[0]);
+            }
         }
-    }, [selectedView, loadInitialData, loadTodaysClasses, loadArchivedCourses]);
+    }, [selectedView]);
+
+    useEffect(() => {
+        if (classToManage) {
+            console.log(`[useEffect classToManage] Class to manage selected: ${classToManage.courseid}. Fetching students.`);
+            fetchStudentsForClass(classToManage.courseid);
+        } else {
+            setStudentsForAttendance([]);
+        }
+    }, [classToManage, fetchStudentsForClass]);
 
     const handleDateClick = async (dateString) => {
         console.log('[handleDateClick] Date clicked:', dateString);
@@ -304,13 +317,13 @@ const InstructorPortal = () => {
 
     const handleAddStudentSubmit = async (event) => {
         event.preventDefault();
-        if (!selectedClassForAttendance || !newStudent.firstName || !newStudent.lastName) {
-            showSnackbar('First and Last name required to add student.', 'warning');
+        if (!classToManage || !newStudent.firstName || !newStudent.lastName) {
+            showSnackbar('Class must be selected, and First/Last name required to add student.', 'warning');
             return;
         }
         setIsAddingStudent(true);
         try {
-            const response = await api.addStudentToCourse(selectedClassForAttendance.courseid, newStudent);
+            const response = await api.addStudentToCourse(classToManage.courseid, newStudent);
             if (response.success && response.student) {
                 setStudentsForAttendance(prev => [...prev, { ...response.student, attendance: false }]);
                 setNewStudent({ firstName: '', lastName: '', email: '' });
@@ -327,14 +340,14 @@ const InstructorPortal = () => {
     };
 
     const handleMarkComplete = async () => {
-        if (!selectedClassForAttendance) return;
+        if (!classToManage) return;
         
-        console.log(`Marking course ${selectedClassForAttendance.courseid} as complete.`);
+        console.log(`Marking course ${classToManage.courseid} as complete.`);
         try {
-            const response = await api.markCourseCompleted(selectedClassForAttendance.courseid);
+            const response = await api.markCourseCompleted(classToManage.courseid);
             if (response.success) {
                 showSnackbar('Course marked as completed!', 'success');
-                loadTodaysClasses();
+                setClassToManage(null);
                 loadInitialData();
                 loadArchivedCourses();
             } else {
@@ -476,13 +489,33 @@ const InstructorPortal = () => {
     };
 
     const renderMyClasses = () => {
-        const datesToDisplay = Array.isArray(availableDates) ? availableDates : [];
-        const actualClasses = Array.isArray(scheduledClasses) ? scheduledClasses : [];
+        // Get scheduled classes and AVAILABLE DATES (already filtered) from state
+        const classesToDisplay = Array.isArray(scheduledClasses) ? scheduledClasses : [];
+        const availabilityDates = Array.isArray(availableDates) ? availableDates : [];
 
-        const sortedDates = [...datesToDisplay].sort((a, b) => new Date(a) - new Date(b));
+        console.log('[renderMyClasses] Rendering scheduledClasses (state):', classesToDisplay);
+        console.log('[renderMyClasses] Rendering availableDates (state, pre-filtered):', availabilityDates);
 
-        console.log('[renderMyClasses] Rendering based on sorted availableDates (Asc):', sortedDates);
-        console.log('[renderMyClasses] Lookup data actualClasses:', actualClasses);
+        // Combine classes and availability into a single list with type and comparable date
+        const combinedItems = [
+            ...classesToDisplay.map(course => ({
+                ...course,
+                type: 'class',
+                sortDate: new Date(course.datescheduled),
+                key: `class-${course.courseid}` // Unique key for React
+            })),
+            ...availabilityDates.map(dateString => ({
+                type: 'availability',
+                sortDate: new Date(dateString), 
+                dateString: dateString,
+                key: `avail-${dateString}` // Unique key for React
+            }))
+        ];
+
+        // Sort combined items by date
+        combinedItems.sort((a, b) => a.sortDate - b.sortDate);
+
+        console.log('[renderMyClasses] Combined and sorted items:', combinedItems);
 
         return (
             <TableContainer component={Paper}>
@@ -490,80 +523,51 @@ const InstructorPortal = () => {
                     <TableHead>
                         <TableRow>
                             <TableCell>Date</TableCell>
-                            <TableCell>Course Number</TableCell>
                             <TableCell>Organization</TableCell>
                             <TableCell>Location</TableCell>
-                            <TableCell>Class Type</TableCell>
-                            <TableCell>Students Registered</TableCell>
-                            <TableCell>Students Attendance</TableCell>
+                            <TableCell>Course No</TableCell>
+                            <TableCell>Course Type</TableCell>
+                            <TableCell>Students R</TableCell> 
+                            <TableCell>Students A</TableCell>
                             <TableCell>Notes</TableCell>
                             <TableCell>Status</TableCell>
                         </TableRow>
                     </TableHead>
                     <TableBody>
-                        {sortedDates.map((availableDateStr, index) => {
-                            // Find if there's a class scheduled on this available date
-                            // --- Robust Date Comparison --- 
-                            const availableDateObj = new Date(availableDateStr);
-                            const availableYear = availableDateObj.getFullYear();
-                            const availableMonth = availableDateObj.getMonth();
-                            const availableDay = availableDateObj.getDate();
-
-                            const matchingClass = actualClasses.find(c => {
-                                if (!c.datescheduled) return false; // Skip if class has no scheduled date
-                                try {
-                                    const classDateObj = new Date(c.datescheduled);
-                                    return classDateObj.getFullYear() === availableYear &&
-                                           classDateObj.getMonth() === availableMonth &&
-                                           classDateObj.getDate() === availableDay;
-                                } catch (e) {
-                                    console.error('Error parsing class date for comparison:', c.datescheduled, e);
-                                    return false;
-                                }
-                            });
-                            // --- End Robust Date Comparison ---
-
-                            // Determine row data based on whether a class matches
-                            const rowData = matchingClass ? {
-                                date: new Date(matchingClass.datescheduled).toLocaleDateString(),
-                                courseNumber: matchingClass.coursenumber || '-',
-                                org: matchingClass.organizationname || '-',
-                                loc: matchingClass.location || '-',
-                                type: matchingClass.coursetypename || '-',
-                                reg: matchingClass.studentsregistered ?? '-',
-                                att: matchingClass.studentsattendance ?? '-',
-                                notes: matchingClass.notes || '-',
-                                status: matchingClass.status || 'Scheduled'
-                            } : {
-                                date: new Date(availableDateStr).toLocaleDateString(),
-                                courseNumber: '-',
-                                org: '-',
-                                loc: '-',
-                                type: '-',
-                                reg: '-',
-                                att: '-',
-                                notes: '-',
-                                status: 'Available'
-                            };
-                            
-                            const isAvailableStatus = rowData.status === 'Available';
-
-                            return (
-                                <TableRow key={availableDateStr + index}>
-                                    <TableCell>{rowData.date}</TableCell>
-                                    <TableCell>{rowData.courseNumber}</TableCell>
-                                    <TableCell>{rowData.org}</TableCell>
-                                    <TableCell>{rowData.loc}</TableCell>
-                                    <TableCell>{rowData.type}</TableCell>
-                                    <TableCell>{rowData.reg}</TableCell>
-                                    <TableCell>{rowData.att}</TableCell>
-                                    <TableCell>{rowData.notes}</TableCell>
-                                    <TableCell sx={{ bgcolor: isAvailableStatus ? 'yellow' : 'inherit' }}>
-                                        {rowData.status}
-                                    </TableCell>
+                        {combinedItems.length === 0 ? (
+                             <TableRow>
+                                <TableCell colSpan={9} align="center">No classes scheduled or availability set.</TableCell>
+                             </TableRow>
+                        ) : (
+                            combinedItems.map((item) => (
+                                <TableRow key={item.key}>
+                                    <TableCell>{item.sortDate.toLocaleDateString()}</TableCell>
+                                    {item.type === 'class' ? (
+                                        <> 
+                                            <TableCell>{item.organizationname || '-'}</TableCell>
+                                            <TableCell>{item.location || '-'}</TableCell>
+                                            <TableCell>{item.coursenumber || '-'}</TableCell>
+                                            <TableCell>{item.coursetypename || '-'}</TableCell>
+                                            <TableCell align="center">{item.studentsregistered ?? '-'}</TableCell>
+                                            <TableCell align="center">{item.studentsattendance ?? '-'}</TableCell>
+                                            <TableCell>{item.notes || '-'}</TableCell>
+                                            <TableCell>{item.status}</TableCell>
+                                        </>
+                                    ) : (
+                                        <> 
+                                            <TableCell></TableCell>
+                                            <TableCell></TableCell>
+                                            <TableCell></TableCell>
+                                            <TableCell></TableCell>
+                                            <TableCell></TableCell>
+                                            <TableCell></TableCell>
+                                            <TableCell></TableCell>
+                                            <TableCell sx={{ color: 'success.main', fontWeight: 'bold' }}>Available</TableCell>
+                                        </>
+                                    )}
                                 </TableRow>
-                            );
-                        })}
+                            ))
+                        )}
                     </TableBody>
                 </Table>
             </TableContainer>
@@ -571,31 +575,74 @@ const InstructorPortal = () => {
     };
 
     const renderAttendance = () => {
-        if (isLoadingTodaysClasses) return <CircularProgress />;
-        if (todaysClassesError) return <Alert severity="error">{todaysClassesError}</Alert>;
-        if (todaysClasses.length === 0) return <Typography>No classes scheduled for today.</Typography>;
+        if (isLoading) return <CircularProgress />;
         
-        if (!selectedClassForAttendance && todaysClasses.length > 0) {
-            setSelectedClassForAttendance(todaysClasses[0]);
-            fetchStudentsForClass(todaysClasses[0].courseid);
-            return <CircularProgress />;
+        if (scheduledClasses.length === 0) return <Typography>No classes currently scheduled.</Typography>;
+        
+        const handleClassSelectionChange = (event) => {
+            const selectedId = event.target.value;
+            const selected = scheduledClasses.find(c => c.courseid === selectedId);
+            console.log(`[renderAttendance] Class selected from dropdown: ID=${selectedId}`, selected);
+            setClassToManage(selected || null);
+        };
+
+        if (scheduledClasses.length > 1 && !classToManage) {
+             return (
+                <Box>
+                     <Typography sx={{ mb: 2 }}>Please select a scheduled class to manage attendance:</Typography>
+                     <FormControl fullWidth>
+                         <InputLabel id="class-select-label">Select Class</InputLabel>
+                         <Select
+                             labelId="class-select-label"
+                             value={''}
+                             label="Select Class"
+                             onChange={handleClassSelectionChange}
+                         >
+                             {scheduledClasses.map((course) => (
+                                 <MenuItem key={course.courseid} value={course.courseid}>
+                                     {`${new Date(course.datescheduled).toLocaleDateString()} - ${course.coursenumber} (${course.organizationname})`}
+                                 </MenuItem>
+                             ))}
+                         </Select>
+                     </FormControl>
+                </Box>
+             );
         }
 
-        if (!selectedClassForAttendance) {
-            return <Typography>Select a class for today (Error: Class selection failed).</Typography>;
+        if (!classToManage) {
+             console.log('[renderAttendance] Waiting for class selection or auto-selection effect...');
+             return <CircularProgress />;
         }
 
         return (
             <Box>
+                 {scheduledClasses.length > 0 && (
+                     <FormControl fullWidth sx={{ mb: 3 }}>
+                         <InputLabel id="class-select-label">Selected Class</InputLabel>
+                         <Select
+                             labelId="class-select-label"
+                             value={classToManage.courseid}
+                             label="Selected Class"
+                             onChange={handleClassSelectionChange}
+                         >
+                             {scheduledClasses.map((course) => (
+                                 <MenuItem key={course.courseid} value={course.courseid}>
+                                     {`${new Date(course.datescheduled).toLocaleDateString()} - ${course.coursenumber} (${course.organizationname})`}
+                                 </MenuItem>
+                             ))}
+                         </Select>
+                     </FormControl>
+                 )}
+
                 <Typography variant="h6" gutterBottom>
-                    {selectedClassForAttendance.coursetypename} ({selectedClassForAttendance.coursenumber}) - {selectedClassForAttendance.organizationname}
+                    {classToManage.coursetypename} ({classToManage.coursenumber}) - {classToManage.organizationname}
                 </Typography>
                 <Typography variant="body1" gutterBottom>
-                    Date: {new Date(selectedClassForAttendance.datescheduled).toLocaleDateString()} | Location: {selectedClassForAttendance.location}
+                    Date: {new Date(classToManage.datescheduled).toLocaleDateString()} | Location: {classToManage.location}
                 </Typography>
                 
                 <Paper sx={{ my: 2, p: 2 }}>
-                    <Typography variant="subtitle1" gutterBottom>Student List ({studentsForAttendance.length} / {selectedClassForAttendance.studentsregistered ?? '?'})</Typography>
+                    <Typography variant="subtitle1" gutterBottom>Student List ({studentsForAttendance.length} / {classToManage.studentsregistered ?? '?'})</Typography>
                     {isLoadingStudents && <CircularProgress size={20}/>}
                     {studentsError && <Alert severity="error">{studentsError}</Alert>}
                     <List dense sx={{ maxHeight: 300, overflow: 'auto' }}>

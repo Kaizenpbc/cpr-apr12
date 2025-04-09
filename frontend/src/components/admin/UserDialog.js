@@ -23,7 +23,7 @@ const initialUserState = {
 // Define allowed roles (fetch from backend ideally, but hardcode for now)
 const roles = ['SuperAdmin', 'Admin', 'Instructor', 'Organization', 'Accounting'];
 
-function UserDialog({ open, onClose, onSave, user }) {
+function UserDialog({ open, onClose, onSave, user, existingUsers = [] }) {
     const [userData, setUserData] = useState(initialUserState);
     const [organizations, setOrganizations] = useState([]);
     const [loadingOrgs, setLoadingOrgs] = useState(false);
@@ -104,20 +104,41 @@ function UserDialog({ open, onClose, onSave, user }) {
         let hasClientError = false;
         const newFieldErrors = {};
 
-        // Client-side validation
+        // --- Client-side validation ---
+        // Required fields
         if (!userData.username.trim()) newFieldErrors.username = "Username required";
-        if (!isEditMode && !userData.password) newFieldErrors.password = "Password required for new user"; // Only require password for new users
+        if (!isEditMode && !userData.password) newFieldErrors.password = "Password required for new user";
         if (!userData.role) newFieldErrors.role = "Role required";
         if (!userData.firstName.trim()) newFieldErrors.firstName = "First Name required";
         if (!userData.lastName.trim()) newFieldErrors.lastName = "Last Name required";
         if (userData.role === 'Organization' && !userData.organizationId) newFieldErrors.organizationId = "Organization required for this role";
-        // Add email format validation etc. if needed
-
-        // Validate Phone Number (if entered)
+        
+        // Phone validation (if entered)
         if (userData.phone && !isValidPhoneNumber(userData.phone)) {
             newFieldErrors.phone = "Invalid phone number.";
-            hasClientError = true;
         }
+        
+        // Email format validation (basic)
+        if (userData.email && !/\S+@\S+\.\S+/.test(userData.email)) {
+            newFieldErrors.email = "Invalid email format.";
+        }
+
+        // Check for duplicate username (case-insensitive, ignore self if editing)
+        const usernameLower = userData.username.trim().toLowerCase();
+        if (usernameLower && existingUsers.some(u => 
+            u.username.toLowerCase() === usernameLower && u.userid !== user?.userid
+        )) {
+            newFieldErrors.username = "Username already taken.";
+        }
+        
+        // Check for duplicate email (case-insensitive, ignore self if editing, allow empty)
+        const emailLower = userData.email.trim().toLowerCase();
+        if (emailLower && existingUsers.some(u => 
+            u.email && u.email.toLowerCase() === emailLower && u.userid !== user?.userid
+        )) {
+            newFieldErrors.email = "Email already registered.";
+        }
+        // --- End Client-side validation ---
 
         if (Object.keys(newFieldErrors).length > 0) {
             setError('Please fix highlighted field(s).');
@@ -148,9 +169,9 @@ function UserDialog({ open, onClose, onSave, user }) {
         } catch (err) {
             console.error('Save user error:', err);
             const message = err.message || 'Failed to save user.';
-            setError('Failed to save user. Please fix highlighted field(s).'); // Generic error
+            setError('Failed to save. Please fix highlighted field(s).'); // Generic error
             
-            // Attempt to highlight specific field based on error
+            // Highlight fields based on backend error (redundant with client checks, but good fallback)
             const tempFieldErrors = {};
             if (message.toLowerCase().includes('username already exists')) {
                  tempFieldErrors.username = "Username already exists.";
@@ -159,8 +180,8 @@ function UserDialog({ open, onClose, onSave, user }) {
             } else if (message.toLowerCase().includes('invalid organization id')) {
                  tempFieldErrors.organizationId = "Selected organization is invalid.";
             }
-            // Add more...
-            setFieldErrors(tempFieldErrors);
+            // If backend error wasn't specific, keep client-side errors
+            setFieldErrors(prev => ({...prev, ...tempFieldErrors})); 
         } finally {
             setLoading(false);
         }

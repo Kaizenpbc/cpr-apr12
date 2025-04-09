@@ -23,17 +23,23 @@ router.get('/billing-queue', authenticateToken, checkAccountingAccess, async (re
                 o.OrganizationName,
                 ct.CourseTypeName,
                 -- Calculate actual attendance count
-                COUNT(CASE WHEN s.Attendance = TRUE THEN 1 END) as studentsAttendance 
+                COUNT(CASE WHEN s.Attendance = TRUE THEN 1 END) as studentsAttendance, 
+                -- Fetch the price per student
+                ocp.Price as ratePerStudent 
             FROM Courses c
             JOIN Organizations o ON c.OrganizationID = o.OrganizationID
             JOIN CourseTypes ct ON c.CourseTypeID = ct.CourseTypeID
             LEFT JOIN Students s ON c.CourseID = s.CourseID 
+            -- Left join to get pricing, may be null if no rule exists
+            LEFT JOIN OrganizationCoursePricing ocp ON c.OrganizationID = ocp.OrganizationID AND c.CourseTypeID = ocp.CourseTypeID
             WHERE c.Status = 'Billing Ready'
             GROUP BY c.CourseID, c.CreatedAt, c.DateScheduled, c.CourseNumber, c.Location, 
-                     c.StudentsRegistered, c.Notes, c.Status, o.OrganizationName, ct.CourseTypeName
+                     c.StudentsRegistered, c.Notes, c.Status, o.OrganizationName, ct.CourseTypeName,
+                     ocp.Price -- Include price in GROUP BY
             ORDER BY c.CreatedAt ASC -- Oldest requests first
         `);
         
+        console.log(`[API GET /accounting/billing-queue] Found ${result.rows.length} courses.`);
         res.json({ success: true, courses: result.rows });
 
     } catch (err) {

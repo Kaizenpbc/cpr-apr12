@@ -10,8 +10,12 @@ import {
     Button,
     Box,
     Typography,
-    Tooltip
+    Tooltip,
+    IconButton
 } from '@mui/material';
+import VisibilityIcon from '@mui/icons-material/Visibility';
+import EventIcon from '@mui/icons-material/Event';
+import CancelIcon from '@mui/icons-material/Cancel';
 
 // Helper function to format date string
 const formatDate = (dateString) => {
@@ -24,7 +28,7 @@ const formatDate = (dateString) => {
     }
 };
 
-const PendingCoursesTable = ({ courses, onScheduleClick, onViewStudentsClick }) => {
+const PendingCoursesTable = ({ courses, onScheduleClick, onViewStudentsClick, onCancelClick }) => {
 
     if (!courses || courses.length === 0) {
         return <Typography sx={{ mt: 2 }}>No pending courses found.</Typography>;
@@ -62,7 +66,7 @@ const PendingCoursesTable = ({ courses, onScheduleClick, onViewStudentsClick }) 
                             <TableCell>{course.notes || '-'}</TableCell>
                             <TableCell>{course.status || '-'}</TableCell>
                             <TableCell align="center">
-                                <Box sx={{ display: 'flex', gap: 1, justifyContent: 'center' }}>
+                                <Box sx={{ display: 'flex', gap: 0.5, justifyContent: 'center' }}>
                                     <Tooltip title="Schedule Instructor & Assign Date">
                                         <Button 
                                             variant="contained" 
@@ -80,6 +84,15 @@ const PendingCoursesTable = ({ courses, onScheduleClick, onViewStudentsClick }) 
                                         >
                                             View Students
                                         </Button>
+                                    </Tooltip>
+                                    <Tooltip title="Cancel Course Request">
+                                        <IconButton 
+                                            color="error" 
+                                            size="small"
+                                            onClick={() => onCancelClick(course.courseid, course.coursenumber)} // Pass ID and number
+                                        >
+                                            <CancelIcon fontSize="small" />
+                                        </IconButton>
                                     </Tooltip>
                                 </Box>
                             </TableCell>

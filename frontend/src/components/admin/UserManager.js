@@ -197,6 +197,7 @@ function UserManager() {
                 onClose={handleDialogClose} 
                 onSave={handleDialogSave}
                 user={editingUser} 
+                existingUsers={users}
             />
 
         </Paper>

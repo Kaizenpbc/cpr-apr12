@@ -35,10 +35,15 @@ api.interceptors.response.use(
 );
 
 export const login = async (username, password) => {
+    console.log('[API Service] Sending login request:', { username, password: '********' }); // Hide password from log
     try {
-        console.log('Sending login request:', { username, password });
         const response = await api.post('/auth/login', { username, password });
-        console.log('Login response:', response);
+        console.log('[API Service] Raw login response received from backend:', response);
+        if (response && response.user) {
+             console.log('[API Service] User object received within response:', response.user);
+        } else {
+             console.warn('[API Service] User object MISSING in login response!');
+        }
         return response;
     } catch (error) {
         console.error('Login error:', error);
@@ -615,6 +620,24 @@ export const deletePricingRule = async (id) => {
         console.error(`[API Service] Error deleting pricing rule ${id}:`, error);
         if (error instanceof Error) throw error;
         throw new Error('Failed to delete pricing rule on the server.');
+    }
+};
+
+// --- Course Actions (Admin) ---
+export const cancelCourse = async (courseId) => {
+    console.log(`[API Service] Cancelling course ${courseId}...`);
+    try {
+        // Assumes interceptor adds Admin/SuperAdmin token
+        const response = await api.put(`/courses/${courseId}/cancel`); 
+        if (response && response.success) {
+            return response; // Return success message
+        } else {
+            throw new Error(response?.message || 'Failed to cancel course');
+        }
+    } catch (error) {
+        console.error(`[API Service] Error cancelling course ${courseId}:`, error);
+        if (error instanceof Error) throw error;
+        throw new Error('Failed to cancel course on the server.');
     }
 };
 

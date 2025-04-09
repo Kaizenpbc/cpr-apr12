@@ -13,6 +13,7 @@ const courseTypeRoutes = require('./routes/courseTypes');
 const pricingRuleRoutes = require('./routes/pricingRules');
 const accountingRoutes = require('./routes/accounting');
 const courseRoutes = require('./routes/courses'); // Add this
+const instructorRoutes = require('./routes/instructors'); // Import instructor routes
 const authenticateToken = require('./middleware/authenticateToken'); // Import middleware
 
 console.log('Starting server setup...'); // Log start
@@ -53,6 +54,7 @@ app.use('/api/course-types', courseTypeRoutes);
 app.use('/api/pricing-rules', pricingRuleRoutes);
 app.use('/api/accounting', accountingRoutes);
 app.use('/api/courses', courseRoutes); // Add this (ensure base path is correct)
+app.use('/api/instructor', instructorRoutes); // Mount instructor routes
 
 // Test database connection - Enhanced
 app.get('/api/test', async (req, res) => {
@@ -87,16 +89,36 @@ app.post('/api/auth/login', async (req, res) => {
             const user = result.rows[0];
             const token = user.userid.toString();
             
+            let organizationName = null;
+            // If user has an organizationId, fetch the organization name
+            if (user.organizationid) {
+                try {
+                    const orgResult = await pool.query('SELECT OrganizationName FROM organizations WHERE OrganizationID = $1', [user.organizationid]);
+                    if (orgResult.rows.length > 0) {
+                        organizationName = orgResult.rows[0].organizationname; // Use lowercase key returned by pg
+                    }
+                } catch (orgErr) {
+                    console.error("Error fetching organization name during login:", orgErr);
+                    // Don't fail login if org name fetch fails, just leave it null
+                }
+            }
+
+            // <<< DETAILED LOGGING START >>>
+            const userPayload = {
+                userid: user.userid,
+                username: user.username,
+                role: user.role,
+                firstname: user.firstname,
+                lastname: user.lastname,
+                organizationId: user.organizationid,
+                organizationName: organizationName // This might be null
+            };
+            console.log('[API POST /auth/login] User object being sent to frontend:', JSON.stringify(userPayload, null, 2));
+            // <<< DETAILED LOGGING END >>>
+            
             res.json({ 
                 success: true, 
-                user: {
-                    userid: user.userid,
-                    username: user.username,
-                    role: user.role,
-                    firstname: user.firstname,
-                    lastname: user.lastname,
-                    organizationId: user.organizationid
-                },
+                user: userPayload, // Send the prepared payload
                 token
             });
         } else {
@@ -432,7 +454,7 @@ app.post('/api/courses/request', authenticateToken, async (req, res) => {
 
     try {
         // Query for Organization NAME
-        const orgResult = await pool.query('SELECT OrganizationName FROM Organizations WHERE OrganizationID = $1', [organizationId]);
+        const orgResult = await pool.query('SELECT OrganizationName FROM organizations WHERE OrganizationID = $1', [organizationId]);
         
         // Query for CourseType CODE (use code now for CourseNumber)
         const typeResult = await pool.query('SELECT CourseCode FROM CourseTypes WHERE CourseTypeID = $1', [courseTypeId]);
@@ -788,57 +810,75 @@ app.get('/api/courses/:courseId/students', authenticateToken, async (req, res) =
 // --- Instructor: Update Student Attendance ---
 app.put('/api/students/:studentId/attendance', authenticateToken, async (req, res) => {
     const { studentId } = req.params;
-    const { attended } = req.body; // Expecting { attended: boolean }
+    const { attended } = req.body;
+    const userId = req.user?.userid; // Use optional chaining
+
+    console.log(`[API PUT /students/${studentId}/attendance] Request received. Attended: ${attended}, UserID: ${userId}`);
 
     if (typeof attended !== 'boolean') {
-         return res.status(400).json({ success: false, message: 'Invalid attendance value provided.' });
+        return res.status(400).json({ success: false, message: 'Invalid attendance value provided.' });
+    }
+    if (!userId) {
+         return res.status(401).json({ success: false, message: 'Authentication required.' });
+    }
+    if (isNaN(parseInt(studentId, 10))) {
+        return res.status(400).json({ success: false, message: 'Invalid Student ID format.' });
     }
 
-    const client = await pool.connect(); // Get client for transaction
+    const client = await pool.connect();
     try {
         await client.query('BEGIN');
-        
-        // 1. Update the specific student's attendance
+
+        // 1. Get CourseID associated with the student
+        const studentCourse = await client.query('SELECT CourseID FROM Students WHERE StudentID = $1', [studentId]);
+        if (studentCourse.rows.length === 0) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ success: false, message: 'Student not found.' });
+        }
+        const courseId = studentCourse.rows[0].courseid;
+
+        // Optional: Authorization Check - Is the user the assigned instructor for this course?
+        // This requires fetching InstructorID for the user and comparing with Courses.InstructorID
+        // For now, we'll allow any authenticated user (instructor) to update any student
+        // In a real app, add role/assignment checks here.
+
+        // 2. Update the student's attendance
         const updateResult = await client.query(
-            'UPDATE Students SET Attendance = $1, UpdatedAt = CURRENT_TIMESTAMP WHERE StudentID = $2 RETURNING CourseID',
+            'UPDATE Students SET Attendance = $1 WHERE StudentID = $2 RETURNING StudentID',
             [attended, studentId]
         );
 
         if (updateResult.rowCount === 0) {
+            // Should not happen if student was found earlier, but safety check
             await client.query('ROLLBACK');
-            return res.status(404).json({ success: false, message: 'Student not found.' });
+            return res.status(404).json({ success: false, message: 'Student not found during update.' });
         }
 
-        const courseId = updateResult.rows[0].courseid;
-
-        // 2. Recalculate the total attendance for the course
+        // 3. Calculate the new attendance count for the course
         const attendanceCountResult = await client.query(
-            'SELECT COUNT(*) FROM Students WHERE CourseID = $1 AND Attendance = TRUE',
+            'SELECT COUNT(*) as count FROM Students WHERE CourseID = $1 AND Attendance = TRUE',
             [courseId]
         );
         const newAttendanceCount = parseInt(attendanceCountResult.rows[0].count, 10);
 
         await client.query('COMMIT');
 
-        // --- Emit WebSocket Event --- 
-        // Emit to all connected sockets (or could target Admins specifically if needed)
-        // For simplicity, emitting broadly for now.
-        console.log(`Emitting 'attendance_updated' for Course ${courseId} with count ${newAttendanceCount}`);
+        // 4. Emit socket event to notify clients (e.g., Admin Portal)
+        console.log(`[API PUT /students/attendance] Emitting attendance_updated for Course ${courseId}. New Count: ${newAttendanceCount}`);
         io.emit('attendance_updated', { courseId: courseId, newAttendanceCount: newAttendanceCount });
-        // --- End Emit WebSocket Event ---
 
-        res.json({ success: true, message: 'Attendance updated.', newAttendanceCount: newAttendanceCount });
+        res.json({ success: true, message: 'Attendance updated successfully.' });
 
     } catch (err) {
         await client.query('ROLLBACK');
-        console.error(`Error updating attendance for student ${studentId}:`, err);
+        console.error(`[API PUT /students/${studentId}/attendance] Error:`, err);
         res.status(500).json({ success: false, message: 'Failed to update attendance.' });
     } finally {
         client.release();
     }
 });
 
-// --- Instructor: Add Student to Course (During Attendance) ---
+// --- Instructor: Add Student during Attendance ---
 app.post('/api/courses/:courseId/add-student', authenticateToken, async (req, res) => {
     const { courseId } = req.params;
     const { firstName, lastName, email } = req.body; // Expecting { firstName, lastName, email? }

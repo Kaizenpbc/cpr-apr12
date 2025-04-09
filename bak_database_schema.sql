@@ -48,16 +48,10 @@ CREATE TABLE Organizations (
 );
 
 -- Add foreign key to Users table (Moved Here - After Organizations is created)
-ALTER TABLE Users DROP CONSTRAINT IF EXISTS fk_organization;
 ALTER TABLE Users 
 ADD CONSTRAINT fk_organization 
 FOREIGN KEY (OrganizationID) 
 REFERENCES Organizations(OrganizationID);
-
--- Insert Default Organizations (Re-added)
-INSERT INTO Organizations (OrganizationName, ContactName, ContactEmail, ContactPhone, AddressStreet, AddressCity, AddressProvince, AddressPostalCode, CEOName, CEOEmail, CEOPhone) VALUES
-('Seneca College', 'Admin Contact', 'contact@seneca.ca', '416-491-5050', '1750 Finch Ave E', 'North York', 'ON', 'M2J 2X5', 'David Agnew', 'david.agnew@senecacollege.ca', '416-491-5050'),
-('Default Client Inc.', 'Default Contact', 'contact@default.com', '905-555-1234', '1 Default St', 'Default City', 'ON', 'L1L 1L1', 'Mr. Default', 'ceo@default.com', '905-555-1111');
 
 -- Create Instructors table
 CREATE TABLE Instructors (
@@ -183,35 +177,17 @@ INSERT INTO CourseTypes (CourseTypeName, CourseCode, Description, Duration, MaxS
 ('Mask Fit Test & Certification', 'MASK', NULL, NULL, NULL);
 
 -- Insert test users
-INSERT INTO Users (Username, Password, Role, FirstName, LastName, Email, Phone, OrganizationID) VALUES
-('instructor', 'test123', 'Instructor', 'John', 'Doe', 'instructor@example.com', NULL, NULL),
-('orgadmin', 'test123', 'Organization', 'Jane', 'Smith', 'orgadmin@example.com', NULL, 1), -- Link orgadmin to Org ID 1
-('courseadmin', 'test123', 'Admin', 'Michael', 'Johnson', 'michael.j@example.com', NULL, NULL),
-('actadmin', 'test123', 'Accounting', 'Sarah', 'Wilson', 'actadmin@example.com', NULL, NULL);
+INSERT INTO Users (Username, Password, Role, FirstName, LastName, Email, Phone) VALUES
+('instructor', 'test123', 'Instructor', 'John', 'Doe', 'instructor@example.com', NULL),
+('orgadmin', 'test123', 'Organization', 'Jane', 'Smith', 'orgadmin@example.com', NULL),
+('courseadmin', 'test123', 'Admin', 'Michael', 'Johnson', 'michael.j@example.com', NULL),
+('actadmin', 'test123', 'Accounting', 'Sarah', 'Wilson', 'actadmin@example.com', NULL);
 
 -- Insert default SuperAdmin user
 INSERT INTO Users (Username, Password, Role, FirstName, LastName, Email, Phone) VALUES
 ('superadmin', 'test123', 'SuperAdmin', 'Super', 'Admin', 'superadmin@example.com', NULL);
 
--- Insert Default Instructor Link (Correct Placement)
-INSERT INTO Instructors (UserID) VALUES (1);
-
--- Insert Default Courses (Now safe to link InstructorID 1)
--- Assuming FACA gets ID 1, BLS gets ID 3 after init (Check CourseTypes inserts)
-INSERT INTO Courses (CourseNumber, OrganizationID, InstructorID, CourseTypeID, DateRequested, DateScheduled, Location, StudentsRegistered, Status) VALUES
-('20250501-SEN-FACA', 1, 1, 1, '2025-05-01', '2025-05-15', 'Seneca Campus Room A', 10, 'Scheduled'),
-('20250510-DEF-BLS', 2, 1, 3, '2025-05-10', '2025-05-20', 'Default Client Boardroom', 8, 'Scheduled');
-
--- Insert Default Students for Default Courses
--- Assuming the courses above get IDs 1 and 2 respectively
-INSERT INTO Students (CourseID, FirstName, LastName, Email, Attendance) VALUES
-(1, 'Alice', 'Alpha', 'alice@test.com', FALSE),
-(1, 'Bob', 'Beta', 'bob@test.com', FALSE),
-(1, 'Charlie', 'Gamma', 'charlie@test.com', FALSE),
-(2, 'David', 'Delta', 'david@test.com', FALSE),
-(2, 'Eve', 'Epsilon', 'eve@test.com', FALSE);
-
--- Define User-Organization Foreign Key after both tables exist (Re-added)
+-- Define User-Organization Foreign Key after both tables exist
 ALTER TABLE Users DROP CONSTRAINT IF EXISTS fk_organization;
 ALTER TABLE Users 
 ADD CONSTRAINT fk_organization 

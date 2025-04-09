@@ -9,8 +9,12 @@ import {
     Paper,
     Button,
     Typography,
-    Tooltip
+    Tooltip,
+    IconButton,
+    Box
 } from '@mui/material';
+import VisibilityIcon from '@mui/icons-material/Visibility';
+import CancelIcon from '@mui/icons-material/Cancel';
 
 const formatDate = (dateString) => {
     if (!dateString) return '-';
@@ -21,7 +25,7 @@ const formatDate = (dateString) => {
     }
 };
 
-const ScheduledCoursesTable = ({ courses, onViewStudentsClick }) => {
+const ScheduledCoursesTable = ({ courses, onViewStudentsClick, onCancelClick }) => {
 
     if (!courses || courses.length === 0) {
         return <Typography sx={{ mt: 2 }}>No scheduled courses found.</Typography>;
@@ -59,15 +63,26 @@ const ScheduledCoursesTable = ({ courses, onViewStudentsClick }) => {
                             <TableCell>{course.status || '-'}</TableCell>
                             <TableCell>{course.instructorname || '-'}</TableCell>
                             <TableCell align="center">
-                                <Tooltip title="View Registered Students">
-                                    <Button 
-                                        variant="outlined" 
-                                        size="small"
-                                        onClick={() => onViewStudentsClick(course.courseid)}
-                                    >
-                                        View Students
-                                    </Button>
-                                </Tooltip>
+                                <Box sx={{ display: 'flex', gap: 0.5, justifyContent: 'center' }}>
+                                    <Tooltip title="View Registered Students">
+                                        <IconButton 
+                                            color="primary"
+                                            size="small"
+                                            onClick={() => onViewStudentsClick(course.courseid)}
+                                        >
+                                            <VisibilityIcon fontSize="small" />
+                                        </IconButton>
+                                    </Tooltip>
+                                    <Tooltip title="Cancel Scheduled Course">
+                                        <IconButton 
+                                            color="error" 
+                                            size="small"
+                                            onClick={() => onCancelClick(course.courseid, course.coursenumber)}
+                                        >
+                                            <CancelIcon fontSize="small" />
+                                        </IconButton>
+                                    </Tooltip>
+                                </Box>
                             </TableCell>
                         </TableRow>
                     ))}

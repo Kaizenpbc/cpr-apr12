@@ -273,6 +273,27 @@ const CourseAdminPortal = () => {
         }
     };
 
+    const handleCancelCourse = async (courseId, courseNumber) => {
+        const confirmMessage = `Are you sure you want to cancel course: ${courseNumber} (ID: ${courseId})?`;
+        if (window.confirm(confirmMessage)) {
+            console.log(`Attempting to cancel course ${courseId}`);
+            try {
+                const response = await api.cancelCourse(courseId);
+                if (response.success) {
+                    showSnackbar(response.message || 'Course cancelled successfully.', 'success');
+                    // Refresh relevant lists
+                    loadPendingCourses(); 
+                    loadScheduledCourses();
+                } else {
+                    throw new Error(response.message || 'Cancellation failed on server.');
+                }
+            } catch (err) {
+                console.error(`Error cancelling course ${courseId}:`, err);
+                showSnackbar(err.message || 'An error occurred during cancellation.', 'error');
+            }
+        }
+    };
+
     const handleInstructorFilterChange = (event) => {
         setSelectedInstructorFilter(event.target.value);
     };
@@ -435,6 +456,7 @@ const CourseAdminPortal = () => {
                                 courses={filteredPendingCourses} 
                                 onScheduleClick={handleScheduleCourseClick} 
                                 onViewStudentsClick={handleViewStudentsClick}
+                                onCancelClick={handleCancelCourse}
                             />
                         )}
                     </>
@@ -499,6 +521,7 @@ const CourseAdminPortal = () => {
                             <ScheduledCoursesTable 
                                 courses={filteredScheduledCourses} 
                                 onViewStudentsClick={handleViewStudentsClick} 
+                                onCancelClick={handleCancelCourse}
                             />
                         )}
                     </>

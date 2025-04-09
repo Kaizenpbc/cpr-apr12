@@ -41,8 +41,8 @@ const ReadyForBillingTable = ({ courses, onCreateInvoiceClick, onReviewClick }) 
                         <TableCell>Course Type</TableCell>
                         <TableCell>Students Registered</TableCell>
                         <TableCell>Students Attendance</TableCell>
-                        <TableCell>Rate</TableCell>{/* Placeholder */}
-                        <TableCell>Total Cost</TableCell>{/* Placeholder */}
+                        <TableCell>Rate</TableCell>
+                        <TableCell>Total Cost</TableCell>
                         <TableCell>Status</TableCell>
                         <TableCell align="center">Actions</TableCell>
                     </TableRow>
@@ -58,7 +58,9 @@ const ReadyForBillingTable = ({ courses, onCreateInvoiceClick, onReviewClick }) 
                             <TableCell>{course.coursetypename || '-'}</TableCell>
                             <TableCell align="center">{course.studentsregistered ?? '-'}</TableCell>
                             <TableCell align="center">{course.studentsattendance ?? '-'}</TableCell>
-                            <TableCell align="center">{'-'} {/* Rate Placeholder */}</TableCell>
+                            <TableCell align="right">
+                                {course.rateperstudent != null ? `$${parseFloat(course.rateperstudent).toFixed(2)}` : 'N/A'}
+                            </TableCell>
                             <TableCell align="center">{'-'} {/* Cost Placeholder */}</TableCell>
                             <TableCell>{course.status || '-'}</TableCell>
                             <TableCell align="center">

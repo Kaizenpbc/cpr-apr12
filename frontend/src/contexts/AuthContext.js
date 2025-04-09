@@ -68,10 +68,17 @@ export const AuthProvider = ({ children }) => {
     };
 
     const login = (userData, userToken) => {
+        // <<< DETAILED LOGGING START >>>
+        console.log('[AuthContext] login called with userData:', userData);
+        console.log('[AuthContext] login called with userToken:', userToken);
+        // <<< DETAILED LOGGING END >>>
         setUser(userData);
         setToken(userToken);
         localStorage.setItem('user', JSON.stringify(userData));
         localStorage.setItem('token', userToken);
+        // <<< DETAILED LOGGING START >>>
+        console.log('[AuthContext] State and localStorage updated. Current user state:', userData);
+        // <<< DETAILED LOGGING END >>>
         // Connect socket after successful login
         connectSocket(userData.userid); 
     };
