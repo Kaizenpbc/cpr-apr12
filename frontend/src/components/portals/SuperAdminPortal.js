@@ -16,9 +16,13 @@ import {
 import BusinessIcon from '@mui/icons-material/Business'; // Org icon
 import PeopleIcon from '@mui/icons-material/People'; // Users icon
 import BookIcon from '@mui/icons-material/Book'; // Courses icon (placeholder)
+import CategoryIcon from '@mui/icons-material/Category'; // Course Types icon
+import PriceChangeIcon from '@mui/icons-material/PriceChange'; // Pricing icon
 import LogoutIcon from '@mui/icons-material/Logout';
 import OrganizationManager from '../admin/OrganizationManager';
 import UserManager from '../admin/UserManager'; // Import the manager component
+import CourseTypeManager from '../admin/CourseTypeManager'; // Import the manager
+import PricingManager from '../admin/PricingManager'; // Import the manager
 // import CourseManager from '../admin/CourseManager'; // To be created
 
 const drawerWidth = 240;
@@ -39,9 +43,10 @@ function SuperAdminPortal() {
                 return <OrganizationManager />;
             case 'users':
                 return <UserManager />; // Render the component
-            case 'courses':
-                 // return <CourseManager />;
-                 return <Typography>Course Management Component Placeholder</Typography>;
+            case 'coursetypes':
+                 return <CourseTypeManager />;
+            case 'pricing':
+                 return <PricingManager />;
             default:
                 return <Typography>Select a management section</Typography>;
         }
@@ -84,15 +89,26 @@ function SuperAdminPortal() {
                             <ListItemText primary="Users" />
                         </ListItem>
 
-                         {/* Course Management */}
+                         {/* Course Type Management */}
                          <ListItem
                             component="div"
-                            selected={selectedView === 'courses'}
-                            onClick={() => setSelectedView('courses')}
+                            selected={selectedView === 'coursetypes'}
+                            onClick={() => setSelectedView('coursetypes')}
                             sx={{ cursor: 'pointer' }}
                         >
-                            <ListItemIcon><BookIcon /></ListItemIcon>
-                            <ListItemText primary="Courses" />
+                            <ListItemIcon><CategoryIcon /></ListItemIcon>
+                            <ListItemText primary="Course Types" />
+                        </ListItem>
+
+                        {/* Pricing Rules Management */}
+                         <ListItem
+                            component="div"
+                            selected={selectedView === 'pricing'}
+                            onClick={() => setSelectedView('pricing')}
+                            sx={{ cursor: 'pointer' }}
+                        >
+                            <ListItemIcon><PriceChangeIcon /></ListItemIcon>
+                            <ListItemText primary="Pricing Rules" />
                         </ListItem>
 
                         <Divider sx={{ my: 1 }} />

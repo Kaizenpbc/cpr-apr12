@@ -109,7 +109,7 @@ const CompletedCoursesTable = ({ courses, onViewStudentsClick, onBillClick, sort
                             <TableCell>{course.organizationname || '-'}</TableCell>
                             <TableCell>{course.location || '-'}</TableCell>
                             <TableCell align="center">{course.studentsregistered ?? '-'}</TableCell>
-                            <TableCell align="center">{'-'}</TableCell>
+                            <TableCell align="center">{course.studentsattendance ?? '-'}</TableCell>
                             <TableCell>{course.notes || '-'}</TableCell>
                             <TableCell>{course.status || '-'}</TableCell>
                             <TableCell>{course.instructorname || '-'}</TableCell>

@@ -139,18 +139,22 @@ export const scheduleClass = async (classData) => {
 
 // Course Types
 export const getCourseTypes = async () => {
+    console.log('[API Service] Fetching all course types...');
     try {
-        // Assuming the backend route returns { success: true, courseTypes: [...] }
+        // Re-using authenticateToken logic implicitly via api instance
         const response = await api.get('/course-types');
-        if (response && response.courseTypes) {
+        if (response && response.success) {
             return response.courseTypes;
         } else {
-            console.warn('Unexpected response format for getCourseTypes:', response);
-            return [];
+            // Handle potential case where API returns success:false
+            throw new Error(response?.message || 'Failed to fetch course types');
         }
     } catch (error) {
-        console.error('Error fetching course types:', error);
-        throw error?.message ? new Error(error.message) : error;
+        console.error('[API Service] Error fetching course types:', error);
+        // Ensure error object is thrown if it already is one
+        if (error instanceof Error) throw error; 
+        // Otherwise create a new one
+        throw new Error('Failed to fetch course types on the server.');
     }
 };
 
@@ -347,12 +351,17 @@ export const scheduleCourseAdmin = async (courseId, scheduleData) => {
 
 // Admin: Mark course ready for billing
 export const markCourseReadyForBilling = async (courseId) => {
+    console.log(`[API Service] Marking course ${courseId} ready for billing...`);
     try {
-        const response = await api.put(`/admin/courses/${courseId}/ready-for-billing`);
+        // Corrected URL path: Removed '/admin'
+        const response = await api.put(`/courses/${courseId}/ready-for-billing`); 
         return response; // Expect { success: true, message: ... }
     } catch (error) {
-        console.error(`Error marking course ${courseId} ready for billing:`, error);
-        throw error?.message ? new Error(error.message) : error;
+        console.error(`[API Service] Error marking course ${courseId} ready for billing:`, error);
+        // Rethrow specific error from backend if available
+        if (error instanceof Error) throw error; 
+        // Otherwise throw generic
+        throw new Error('Failed to mark course ready for billing on the server.');
     }
 };
 
@@ -476,5 +485,137 @@ export const addUser = async (userData) => {
 };
 
 // Add getUserById, updateUser, deleteUser later
+
+export const deleteUser = async (id) => {
+    console.log(`[API Service] Deleting user ${id}...`);
+    try {
+        // Assumes interceptor adds SuperAdmin token
+        const response = await api.delete(`/users/${id}`); 
+        if (response && response.success) {
+            return response;
+        } else {
+            throw new Error(response?.message || 'Failed to delete user');
+        }
+    } catch (error) {
+        console.error(`[API Service] Error deleting user ${id}:`, error);
+        if (error instanceof Error) throw error;
+        throw new Error('Failed to delete user on the server.');
+    }
+};
+
+// --- Course Type Management (SuperAdmin) ---
+export const addCourseType = async (courseTypeData) => {
+    console.log('[API Service] Adding new course type:', courseTypeData);
+    try {
+        const response = await api.post('/course-types', courseTypeData);
+        if (response && response.success) {
+            return response.courseType;
+        } else {
+            throw new Error(response?.message || 'Failed to add course type');
+        }
+    } catch (error) {
+        console.error('[API Service] Error adding course type:', error);
+        if (error instanceof Error) throw error;
+        throw new Error('Failed to add course type on the server.');
+    }
+};
+
+export const updateCourseType = async (id, courseTypeData) => {
+    console.log(`[API Service] Updating course type ${id}:`, courseTypeData);
+    try {
+        const response = await api.put(`/course-types/${id}`, courseTypeData);
+        if (response && response.success) {
+            return response.courseType;
+        } else {
+            throw new Error(response?.message || 'Failed to update course type');
+        }
+    } catch (error) {
+        console.error(`[API Service] Error updating course type ${id}:`, error);
+        if (error instanceof Error) throw error;
+        throw new Error('Failed to update course type on the server.');
+    }
+};
+
+export const deleteCourseType = async (id) => {
+    console.log(`[API Service] Deleting course type ${id}...`);
+    try {
+        const response = await api.delete(`/course-types/${id}`);
+        if (response && response.success) {
+            return response; // Return success message etc.
+        } else {
+            throw new Error(response?.message || 'Failed to delete course type');
+        }
+    } catch (error) {
+        console.error(`[API Service] Error deleting course type ${id}:`, error);
+        if (error instanceof Error) throw error;
+        throw new Error('Failed to delete course type on the server.');
+    }
+};
+
+// --- Pricing Rule Management (SuperAdmin) ---
+export const getPricingRules = async () => {
+    console.log('[API Service] Fetching all pricing rules...');
+    try {
+        const response = await api.get('/pricing-rules');
+        if (response && response.success) {
+            return response.pricingRules;
+        } else {
+            throw new Error(response?.message || 'Failed to fetch pricing rules');
+        }
+    } catch (error) {
+        console.error('[API Service] Error fetching pricing rules:', error);
+        if (error instanceof Error) throw error;
+        throw new Error('Failed to fetch pricing rules on the server.');
+    }
+};
+
+export const addPricingRule = async (pricingData) => {
+    console.log('[API Service] Adding new pricing rule:', pricingData);
+    try {
+        const response = await api.post('/pricing-rules', pricingData);
+        if (response && response.success) {
+            return response.pricingRule;
+        } else {
+            throw new Error(response?.message || 'Failed to add pricing rule');
+        }
+    } catch (error) {
+        console.error('[API Service] Error adding pricing rule:', error);
+        if (error instanceof Error) throw error;
+        throw new Error('Failed to add pricing rule on the server.');
+    }
+};
+
+export const updatePricingRule = async (id, price) => {
+    // API currently only supports updating the price for a given rule ID
+    console.log(`[API Service] Updating pricing rule ${id}:`, { price });
+    try {
+        const response = await api.put(`/pricing-rules/${id}`, { price }); // Send only price
+        if (response && response.success) {
+            return response.pricingRule;
+        } else {
+            throw new Error(response?.message || 'Failed to update pricing rule');
+        }
+    } catch (error) {
+        console.error(`[API Service] Error updating pricing rule ${id}:`, error);
+        if (error instanceof Error) throw error;
+        throw new Error('Failed to update pricing rule on the server.');
+    }
+};
+
+export const deletePricingRule = async (id) => {
+    console.log(`[API Service] Deleting pricing rule ${id}...`);
+    try {
+        const response = await api.delete(`/pricing-rules/${id}`);
+        if (response && response.success) {
+            return response;
+        } else {
+            throw new Error(response?.message || 'Failed to delete pricing rule');
+        }
+    } catch (error) {
+        console.error(`[API Service] Error deleting pricing rule ${id}:`, error);
+        if (error instanceof Error) throw error;
+        throw new Error('Failed to delete pricing rule on the server.');
+    }
+};
 
 export default api; 

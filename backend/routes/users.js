@@ -269,7 +269,6 @@ router.delete('/:id', authenticateToken, checkSuperAdmin, async (req, res) => {
         // These might be covered by ON DELETE CASCADE if set up on Users(UserID) FKs
         // Let's add explicit deletes just in case cascade isn't fully set on those yet
         await client.query('DELETE FROM InstructorAvailability WHERE InstructorID = $1', [userIdToDelete]);
-        await client.query('DELETE FROM ScheduledClasses WHERE InstructorID = $1', [userIdToDelete]); 
 
         // 4. Delete the user from Users table
         // Note: Courses referencing this user (if OrgAdmin/Instructor) might need handling

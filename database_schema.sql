@@ -3,6 +3,7 @@ DROP TABLE IF EXISTS Students CASCADE;
 DROP TABLE IF EXISTS Invoices CASCADE;
 DROP TABLE IF EXISTS InstructorAvailability CASCADE;
 DROP TABLE IF EXISTS ScheduledClasses CASCADE;
+DROP TABLE IF EXISTS OrganizationCoursePricing CASCADE;
 DROP TABLE IF EXISTS Courses CASCADE;
 DROP TABLE IF EXISTS CourseTypes CASCADE;
 DROP TABLE IF EXISTS Instructors CASCADE;
@@ -67,11 +68,25 @@ CREATE TABLE Instructors (
 CREATE TABLE CourseTypes (
     CourseTypeID SERIAL PRIMARY KEY,
     CourseTypeName VARCHAR(255) UNIQUE NOT NULL,
+    CourseCode VARCHAR(10) UNIQUE NOT NULL,
     Description TEXT,
     Duration INT, -- Duration in hours
     MaxStudents INT,
     CreatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UpdatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Create OrganizationCoursePricing table
+CREATE TABLE OrganizationCoursePricing (
+    PricingID SERIAL PRIMARY KEY,
+    OrganizationID INT NOT NULL,
+    CourseTypeID INT NOT NULL,
+    Price DECIMAL(10, 2) NOT NULL,
+    CreatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UpdatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (OrganizationID) REFERENCES Organizations(OrganizationID) ON DELETE CASCADE, -- Cascade delete if org is deleted
+    FOREIGN KEY (CourseTypeID) REFERENCES CourseTypes(CourseTypeID) ON DELETE CASCADE, -- Cascade delete if course type is deleted
+    UNIQUE (OrganizationID, CourseTypeID) -- Prevent duplicate price for same org/course type combo
 );
 
 -- Create Courses table
@@ -123,39 +138,43 @@ CREATE TABLE Invoices (
     FOREIGN KEY (CourseID) REFERENCES Courses(CourseID) ON DELETE CASCADE
 );
 
--- Instructor Availability Table
+-- Create InstructorAvailability table (Restored)
 CREATE TABLE InstructorAvailability (
     AvailabilityID SERIAL PRIMARY KEY,
-    InstructorID INT NOT NULL,
+    InstructorID INT NOT NULL, -- Should reference Users(UserID)
     AvailableDate DATE NOT NULL,
     CreatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (InstructorID) REFERENCES Users(UserID) ON DELETE CASCADE,
-    UNIQUE (InstructorID, AvailableDate)
+    -- Re-add Foreign Key constraint (assuming Users table exists before this)
+    FOREIGN KEY (InstructorID) REFERENCES Users(UserID) ON DELETE CASCADE, 
+    UNIQUE (InstructorID, AvailableDate) -- Use standard UNIQUE constraint
 );
 
--- Scheduled Classes Table
+-- Create ScheduledClasses table (Restored)
 CREATE TABLE ScheduledClasses (
     ClassID SERIAL PRIMARY KEY,
     InstructorID INT NOT NULL,
     OrganizationID INT NOT NULL,
     ClassDate DATE NOT NULL,
     Location VARCHAR(255) NOT NULL,
-    ClassType VARCHAR(50) NOT NULL,
+    ClassType VARCHAR(50) NOT NULL, -- Refers to CourseType Name/Code conceptually?
     RegisteredStudents INT DEFAULT 0,
-    Attendance INT DEFAULT 0,
+    Attendance INT DEFAULT 0, -- Consider linking to Students table instead?
     Notes TEXT,
-    Status VARCHAR(50) DEFAULT 'Available' CHECK (Status IN ('Available', 'Scheduled')),
+    Status VARCHAR(50) DEFAULT 'Available' CHECK (Status IN ('Available', 'Scheduled')), -- Corrected syntax
     CreatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (InstructorID) REFERENCES Users(UserID) ON DELETE CASCADE,
+    FOREIGN KEY (InstructorID) REFERENCES Users(UserID) ON DELETE CASCADE, 
     FOREIGN KEY (OrganizationID) REFERENCES Organizations(OrganizationID) ON DELETE CASCADE
 );
 
--- Insert default course types
-INSERT INTO CourseTypes (CourseTypeName, Description, Duration, MaxStudents) VALUES
-('Basic Life Support', 'Basic CPR and AED training for healthcare providers', 4, 12),
-('HeartSaver CPR/AED', 'CPR and AED training for lay rescuers', 3, 15),
-('Advanced Cardiac Life Support', 'Advanced cardiovascular life support for healthcare professionals', 8, 10),
-('Pediatric Advanced Life Support', 'Specialized pediatric life support training', 8, 10);
+-- Insert default course types based *only* on user provided list
+-- Remove any previously existing default CourseType inserts first
+DELETE FROM CourseTypes; -- Simple clear, assumes init-db runs DROP TABLE first anyway
+INSERT INTO CourseTypes (CourseTypeName, CourseCode, Description, Duration, MaxStudents) VALUES
+('First Aid and CPR Level A', 'FACA', NULL, NULL, NULL),
+('First Aid and CPR Level C', 'FACC', NULL, NULL, NULL),
+('Basic Life Support (BLS)', 'BLS', NULL, NULL, NULL),
+('WHMIS Training & Certification', 'WHMIS', NULL, NULL, NULL),
+('Mask Fit Test & Certification', 'MASK', NULL, NULL, NULL);
 
 -- Insert test users
 INSERT INTO Users (Username, Password, Role, FirstName, LastName, Email, Phone) VALUES

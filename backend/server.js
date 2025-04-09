@@ -9,6 +9,10 @@ const { pool } = require('./db'); // Import the pool for logging
 // const authRoutes = require('./routes/auth'); // Assuming this structure
 const organizationRoutes = require('./routes/organizations');
 const userRoutes = require('./routes/users');
+const courseTypeRoutes = require('./routes/courseTypes');
+const pricingRuleRoutes = require('./routes/pricingRules');
+const accountingRoutes = require('./routes/accounting');
+const courseRoutes = require('./routes/courses'); // Add this
 const authenticateToken = require('./middleware/authenticateToken'); // Import middleware
 
 console.log('Starting server setup...'); // Log start
@@ -45,6 +49,10 @@ console.log('Middleware applied (cors, express.json).');
 // app.use('/api/auth', authRoutes); // Example
 app.use('/api/organizations', organizationRoutes);
 app.use('/api/users', userRoutes);
+app.use('/api/course-types', courseTypeRoutes);
+app.use('/api/pricing-rules', pricingRuleRoutes);
+app.use('/api/accounting', accountingRoutes);
+app.use('/api/courses', courseRoutes); // Add this (ensure base path is correct)
 
 // Test database connection - Enhanced
 app.get('/api/test', async (req, res) => {
@@ -423,11 +431,11 @@ app.post('/api/courses/request', authenticateToken, async (req, res) => {
     }
 
     try {
-        // Query for Organization NAME instead of non-existent code
+        // Query for Organization NAME
         const orgResult = await pool.query('SELECT OrganizationName FROM Organizations WHERE OrganizationID = $1', [organizationId]);
         
-        // Query for CourseType NAME instead of non-existent code
-        const typeResult = await pool.query('SELECT CourseTypeName FROM CourseTypes WHERE CourseTypeID = $1', [courseTypeId]);
+        // Query for CourseType CODE (use code now for CourseNumber)
+        const typeResult = await pool.query('SELECT CourseCode FROM CourseTypes WHERE CourseTypeID = $1', [courseTypeId]);
         
         if (orgResult.rows.length === 0 || typeResult.rows.length === 0) {
             return res.status(400).json({ success: false, message: 'Invalid Organization or Course Type ID' });
@@ -435,14 +443,31 @@ app.post('/api/courses/request', authenticateToken, async (req, res) => {
         
         const datePart = new Date(dateRequested).toISOString().slice(0, 10).replace(/-/g, '');
         const orgPart = orgResult.rows[0].organizationname.substring(0, 3).toUpperCase();
-        // Use first 3 chars of CourseType NAME for the code part
-        const typePart = typeResult.rows[0].coursetypename.substring(0, 3).toUpperCase();
-        const courseNumber = `${datePart}-${orgPart}-${typePart}`;
+        const typePart = typeResult.rows[0].coursecode.toUpperCase(); 
+        let baseCourseNumber = `${datePart}-${orgPart}-${typePart}`;
+        let finalCourseNumber = baseCourseNumber;
+        let sequence = 0;
 
+        // Loop to find a unique course number
+        // eslint-disable-next-line no-constant-condition
+        while (true) { 
+            const checkResult = await pool.query('SELECT 1 FROM Courses WHERE CourseNumber = $1', [finalCourseNumber]);
+            if (checkResult.rowCount === 0) {
+                break; 
+            }
+            sequence++;
+            finalCourseNumber = `${baseCourseNumber}-${sequence}`;
+            console.log(`Duplicate CourseNumber ${baseCourseNumber} detected, trying ${finalCourseNumber}`);
+            if (sequence > 99) { 
+                 throw new Error('Could not generate a unique course number after 99 attempts.');
+            }
+        }
+
+        // Now insert with the guaranteed unique finalCourseNumber
         const result = await pool.query(
             `INSERT INTO Courses (OrganizationID, CourseTypeID, DateRequested, Location, StudentsRegistered, Notes, Status, CourseNumber)
              VALUES ($1, $2, $3, $4, $5, $6, 'Pending', $7) RETURNING *`,
-            [organizationId, courseTypeId, dateRequested, location, registeredStudents, notes || null, courseNumber]
+            [organizationId, courseTypeId, dateRequested, location, registeredStudents, notes || null, finalCourseNumber]
         );
 
         res.status(201).json({ success: true, message: 'Course requested successfully!', course: result.rows[0] });
@@ -450,14 +475,23 @@ app.post('/api/courses/request', authenticateToken, async (req, res) => {
         // Enhanced logging
         console.error('--- ERROR IN POST /api/courses/request ---');
         console.error('Timestamp:', new Date().toISOString());
-        console.error('Error Type:', typeof err);
-        console.error('Error Object:', err); // Log the full error object
-        if (err instanceof Error) {
-            console.error('Error Stack:', err.stack); // Log stack trace if it's an Error instance
+        console.error('Error Code:', err.code);
+        console.error('Constraint:', err.constraint);
+        console.error('Error Object:', err); 
+
+        // Specific check for CourseNumber unique constraint violation (should be less likely now, but good fallback)
+        if (err.code === '23505' && err.constraint === 'courses_coursenumber_key') {
+            console.warn('Duplicate CourseNumber detected during course request.');
+            return res.status(409).json({ success: false, message: 'A course with this generated number already exists. This might happen if requesting the same course type for the same org on the same day. Please try again or contact support.' });
         }
-        console.error('--- END ERROR DETAILS ---');
         
-        res.status(500).json({ success: false, message: 'Failed to request course' });
+        // Handle other potential errors (like invalid OrgID/CourseTypeID from earlier checks - though unlikely here if inserts worked)
+        if (err.code === '23503') { // Foreign key violation
+             return res.status(400).json({ success: false, message: 'Invalid Organization or Course Type ID provided.'});
+         }
+
+        // Generic internal server error for other unexpected issues
+        res.status(500).json({ success: false, message: 'Failed to request course due to a server error.' });
     }
 });
 
@@ -486,13 +520,19 @@ app.get('/api/admin/instructor-dashboard', authenticateToken, async (req, res) =
             SELECT 
                 c.CourseID, c.InstructorID, c.OrganizationID, c.DateScheduled, c.Location, 
                 c.StudentsRegistered, c.Notes, c.Status, 
-                c.CourseNumber, -- Ensure CourseNumber is selected
+                c.CourseNumber, 
                 ct.CourseTypeName,
-                o.OrganizationName
+                o.OrganizationName,
+                COUNT(CASE WHEN s.Attendance = TRUE THEN 1 END) as studentsAttendance -- Added Attendance Count
             FROM Courses c
             LEFT JOIN CourseTypes ct ON c.CourseTypeID = ct.CourseTypeID
             LEFT JOIN Organizations o ON c.OrganizationID = o.OrganizationID
+            LEFT JOIN Students s ON c.CourseID = s.CourseID -- Join Students
             WHERE c.Status IN ('Scheduled', 'Completed') 
+            -- Group by all non-aggregated columns
+            GROUP BY c.CourseID, c.InstructorID, c.OrganizationID, c.DateScheduled, c.Location, 
+                     c.StudentsRegistered, c.Notes, c.Status, c.CourseNumber, 
+                     ct.CourseTypeName, o.OrganizationName
         `);
         const courses = coursesRes.rows;
 
@@ -533,9 +573,9 @@ app.get('/api/admin/instructor-dashboard', authenticateToken, async (req, res) =
                     organizationName: course.organizationname,
                     location: course.location,
                     studentsRegistered: course.studentsregistered,
-                    studentsAttendance: '-', 
+                    studentsAttendance: parseInt(course.studentsattendance || 0, 10), // Include Attendance Count
                     notes: course.notes,
-                    coursenumber: course.coursenumber // Pass course number through
+                    coursenumber: course.coursenumber
                 });
             });
         });
@@ -585,13 +625,17 @@ app.get('/api/admin/scheduled-courses', authenticateToken, async (req, res) => {
                 c.Location, c.StudentsRegistered, c.Notes, c.Status,
                 o.OrganizationName,
                 ct.CourseTypeName,
-                CONCAT(u.FirstName, ' ', u.LastName) as InstructorName
+                CONCAT(u.FirstName, ' ', u.LastName) as InstructorName,
+                COUNT(CASE WHEN s.Attendance = TRUE THEN 1 END) as "studentsAttendance" -- Calculate Attendance
             FROM Courses c
             JOIN Organizations o ON c.OrganizationID = o.OrganizationID
             JOIN CourseTypes ct ON c.CourseTypeID = ct.CourseTypeID
             LEFT JOIN Instructors i ON c.InstructorID = i.InstructorID
             LEFT JOIN Users u ON i.UserID = u.UserID
+            LEFT JOIN Students s ON c.CourseID = s.CourseID -- Join Students
             WHERE c.Status = 'Scheduled'
+            -- Group by all non-aggregated columns
+            GROUP BY c.CourseID, o.OrganizationName, ct.CourseTypeName, u.FirstName, u.LastName 
             ORDER BY c.DateScheduled ASC -- Or other preferred order
         `);
         res.json({ success: true, courses: result.rows });
@@ -610,14 +654,19 @@ app.get('/api/admin/completed-courses', authenticateToken, async (req, res) => {
                 c.Location, c.StudentsRegistered, c.Notes, c.Status, 
                 o.OrganizationName,
                 ct.CourseTypeName,
-                CONCAT(u.FirstName, ' ', u.LastName) as InstructorName
-                -- TODO: Add Students Attendance data later when available
+                CONCAT(u.FirstName, ' ', u.LastName) as InstructorName,
+                COUNT(CASE WHEN s.Attendance = TRUE THEN 1 END) as studentsAttendance -- Added Attendance Count
             FROM Courses c
             JOIN Organizations o ON c.OrganizationID = o.OrganizationID
             JOIN CourseTypes ct ON c.CourseTypeID = ct.CourseTypeID
             LEFT JOIN Instructors i ON c.InstructorID = i.InstructorID
             LEFT JOIN Users u ON i.UserID = u.UserID
+            LEFT JOIN Students s ON c.CourseID = s.CourseID -- Join Students
             WHERE c.Status = 'Completed'
+            -- Group by all non-aggregated columns
+            GROUP BY c.CourseID, c.CreatedAt, c.DateRequested, c.DateScheduled, c.CourseNumber, 
+                     c.Location, c.StudentsRegistered, c.Notes, c.Status, o.OrganizationName, 
+                     ct.CourseTypeName, u.FirstName, u.LastName
             ORDER BY c.DateScheduled DESC -- Or other preferred order
         `);
         res.json({ success: true, courses: result.rows });
@@ -664,6 +713,15 @@ app.post('/api/courses/:courseId/students', authenticateToken, async (req, res) 
                 [courseId, student.firstName, student.lastName, student.email || null]
             );
             insertedCount += result.rowCount; 
+        }
+
+        // After inserting students, update the StudentsRegistered count on the course
+        if (insertedCount > 0) {
+            await client.query(
+                'UPDATE Courses SET StudentsRegistered = $1, UpdatedAt = CURRENT_TIMESTAMP WHERE CourseID = $2',
+                [insertedCount, courseId]
+            );
+            console.log(`[API POST /students] Updated Course ${courseId} StudentsRegistered count to ${insertedCount}`);
         }
 
         await client.query('COMMIT');
@@ -998,12 +1056,12 @@ io.on('connection', (socket) => {
 console.log('Socket.IO event handlers attached.');
 // --- End Socket.IO --- 
 
-// --- Add Global Error Handlers Here ---
+// --- Global Error Handlers ---
 process.on('uncaughtException', (err, origin) => {
   console.error(`[FATAL] Uncaught Exception: ${err.message}`);
   console.error('Origin:', origin);
   console.error('Stack:', err.stack);
-  // Consider exiting gracefully: pool.end().then(() => process.exit(1)); 
+  // pool.end().then(() => process.exit(1)); 
 });
 
 process.on('unhandledRejection', (reason, promise) => {
@@ -1011,7 +1069,6 @@ process.on('unhandledRejection', (reason, promise) => {
   console.error('Reason:', reason);
 });
 console.log('Global error handlers (uncaughtException, unhandledRejection) attached.');
-// --- End Global Error Handlers ---
 
 // --- Start Server ---
 const port = process.env.PORT || 3001; // Define port here, default to 3001
@@ -1019,7 +1076,7 @@ console.log(`[PORT CHECK] process.env.PORT is: ${process.env.PORT}, Determined p
 
 try {
   console.log(`Attempting to start server on port ${port}...`);
-  server.listen(port, '0.0.0.0', () => { // Use the HTTP server instance
+  server.listen(port, '0.0.0.0', () => { 
     console.log(`---> Server successfully running on port ${port} <---`);
     console.log('Ready for connections.');
   });
@@ -1031,49 +1088,4 @@ try {
 // Ensure the duplicate app.listen is removed/commented
 // app.listen(port, '0.0.0.0', () => { ... });
 
-// Add global error handlers
-process.on('uncaughtException', (err, origin) => {
-  console.error(`[FATAL] Uncaught Exception: ${err.message}`);
-  console.error('Origin:', origin);
-  console.error('Stack:', err.stack);
-  // pool.end().then(() => process.exit(1)); 
-});
-
-process.on('unhandledRejection', (reason, promise) => {
-  console.error('[FATAL] Unhandled Rejection at:', promise);
-  console.error('Reason:', reason);
-  // Application specific logging, throwing an error, or other logic here
-});
-
-console.log('Global error handlers (uncaughtException, unhandledRejection) attached.');
-
-// Commented out duplicate listen call
-// app.listen(port, '0.0.0.0', () => {
-//     console.log(`Server running on port ${port}`);
-// }); 
-
-// --- Delete a Course ---
-app.delete('/api/courses/:id', authenticateToken, async (req, res) => {
-    const { id } = req.params;
-    console.log(`DELETE /api/courses/${id} received`);
-
-    // Optional: Add role-based authorization check if needed
-    // For example: if (req.user.role !== 'Admin') { ... return res.status(403)... }
-
-    try {
-        // Using pool.query which we established is available
-        const result = await pool.query('DELETE FROM Courses WHERE CourseID = $1 RETURNING CourseID', [id]);
-
-        if (result.rowCount === 0) {
-            console.log(`Course ${id} not found for deletion.`);
-            return res.status(404).json({ success: false, message: 'Course not found' });
-        }
-
-        console.log(`Course ${id} deleted successfully.`);
-        res.json({ success: true, message: `Course ${id} deleted successfully.` });
-
-    } catch (err) {
-        console.error(`Error deleting course ${id}:`, err);
-        res.status(500).json({ success: false, message: 'Failed to delete course' });
-    }
-}); 
+// Remove any trailing characters/lines (ensure this is the end of the file)

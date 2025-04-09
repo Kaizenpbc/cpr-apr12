@@ -13,7 +13,8 @@ import {
     TableRow,
     CircularProgress,
     Alert,
-    IconButton
+    IconButton,
+    Snackbar
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import EditIcon from '@mui/icons-material/Edit';
@@ -36,6 +37,7 @@ function UserManager() {
     // State for Add/Edit Dialog
     const [dialogOpen, setDialogOpen] = useState(false);
     const [editingUser, setEditingUser] = useState(null); // null for Add, user object for Edit
+    const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' }); // Add Snackbar state
 
     const fetchUsers = useCallback(async () => {
         setLoading(true);
@@ -67,9 +69,28 @@ function UserManager() {
     };
 
     const handleDelete = async (userId) => {
-        if (window.confirm(`Are you sure you want to delete user ID ${userId}?`)) {
-             alert(`DELETE User ${userId} API call not implemented yet.`); // Placeholder
-            // Implement actual delete API call later
+        // Use user details from state to show name in confirmation
+        const userToDelete = users.find(u => u.userid === userId);
+        const confirmMessage = userToDelete 
+            ? `Are you sure you want to delete user: ${userToDelete.username} (ID: ${userId})?`
+            : `Are you sure you want to delete user ID ${userId}?`;
+
+        if (window.confirm(confirmMessage)) {
+            // alert(`DELETE User ${userId} API call not implemented yet.`); // Remove placeholder
+            try {
+                setError(''); // Clear previous table errors
+                const response = await api.deleteUser(userId);
+                if (response.success) {
+                    showSnackbar(`User ${userId} deleted successfully.`, 'success');
+                    fetchUsers(); // Refresh list
+                } else {
+                    // Throw error if API returns success: false
+                    throw new Error(response.message || 'Deletion failed on server.');
+                }
+            } catch (err) {
+                console.error(`Error deleting user ${userId}:`, err);
+                showSnackbar(err.message || 'Failed to delete user.', 'error');
+            }
         }
     };
 
@@ -81,6 +102,11 @@ function UserManager() {
     const handleDialogSave = () => {
         fetchUsers(); // Refresh list after save
         // Dialog will close itself via its own logic
+    };
+
+    // --- Define showSnackbar helper ---
+    const showSnackbar = (message, severity = 'success') => {
+        setSnackbar({ open: true, message, severity });
     };
 
     return (
@@ -147,6 +173,23 @@ function UserManager() {
                     </Table>
                 </TableContainer>
             )}
+
+            {/* Snackbar for feedback */}
+            <Snackbar
+                open={snackbar.open}
+                autoHideDuration={6000}
+                onClose={() => setSnackbar({ ...snackbar, open: false })}
+                anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+            >
+                <Alert 
+                    onClose={() => setSnackbar({ ...snackbar, open: false })} 
+                    severity={snackbar.severity} 
+                    variant="filled" 
+                    sx={{ width: '100%' }}
+                >
+                    {snackbar.message}
+                </Alert>
+            </Snackbar>
 
             {/* Add/Edit Dialog */}
             <UserDialog 
