@@ -412,6 +412,35 @@ export const getInvoices = async () => {
     }
 };
 
+// Accounting: Get Invoice Details
+export const getInvoiceDetails = async (invoiceId) => {
+    console.log(`[API Service] Fetching details for invoice ${invoiceId}...`);
+    try {
+        const response = await api.get(`/accounting/invoices/${invoiceId}`);
+        // Backend already returns { success: true, invoice: {...} }
+        return response;
+    } catch (error) {
+        console.error(`[API Service] Error fetching invoice details ${invoiceId}:`, error);
+        if (error instanceof Error) throw error;
+        throw new Error('Failed to fetch invoice details on the server.');
+    }
+};
+
+// Accounting: Email Invoice
+export const emailInvoice = async (invoiceId) => {
+    console.log(`[API Service] Requesting email for invoice ${invoiceId}...`);
+    try {
+        // POST request, no body needed as invoiceId is in URL
+        const response = await api.post(`/accounting/invoices/${invoiceId}/email`); 
+        // Expect { success: true, message: ..., previewUrl?: ... }
+        return response;
+    } catch (error) {
+        console.error(`[API Service] Error emailing invoice ${invoiceId}:`, error);
+        if (error instanceof Error) throw error;
+        throw new Error('Failed to trigger invoice email on the server.');
+    }
+};
+
 // === NEW SuperAdmin Functions ===
 
 // --- Organization Management (SuperAdmin) ---

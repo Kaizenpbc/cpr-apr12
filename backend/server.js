@@ -374,7 +374,7 @@ app.get('/api/instructor/classes', authenticateToken, async (req, res) => {
                 o.OrganizationName, 
                 ct.CourseTypeName,
                 -- Calculate actual attendance count
-                COUNT(CASE WHEN s.Attendance = TRUE THEN 1 END) as StudentsAttendance
+                COUNT(CASE WHEN s.Attendance = TRUE THEN 1 END) as studentsattendance
             FROM Courses c
             JOIN Organizations o ON c.OrganizationID = o.OrganizationID
             JOIN CourseTypes ct ON c.CourseTypeID = ct.CourseTypeID
@@ -545,7 +545,7 @@ app.get('/api/admin/instructor-dashboard', authenticateToken, async (req, res) =
                 c.CourseNumber, 
                 ct.CourseTypeName,
                 o.OrganizationName,
-                COUNT(CASE WHEN s.Attendance = TRUE THEN 1 END) as studentsAttendance -- Added Attendance Count
+                COUNT(CASE WHEN s.Attendance = TRUE THEN 1 END) as studentsattendance -- Added Attendance Count
             FROM Courses c
             LEFT JOIN CourseTypes ct ON c.CourseTypeID = ct.CourseTypeID
             LEFT JOIN Organizations o ON c.OrganizationID = o.OrganizationID
@@ -648,7 +648,7 @@ app.get('/api/admin/scheduled-courses', authenticateToken, async (req, res) => {
                 o.OrganizationName,
                 ct.CourseTypeName,
                 CONCAT(u.FirstName, ' ', u.LastName) as InstructorName,
-                COUNT(CASE WHEN s.Attendance = TRUE THEN 1 END) as "studentsAttendance" -- Calculate Attendance
+                COUNT(CASE WHEN s.Attendance = TRUE THEN 1 END) as studentsattendance 
             FROM Courses c
             JOIN Organizations o ON c.OrganizationID = o.OrganizationID
             JOIN CourseTypes ct ON c.CourseTypeID = ct.CourseTypeID
@@ -677,7 +677,7 @@ app.get('/api/admin/completed-courses', authenticateToken, async (req, res) => {
                 o.OrganizationName,
                 ct.CourseTypeName,
                 CONCAT(u.FirstName, ' ', u.LastName) as InstructorName,
-                COUNT(CASE WHEN s.Attendance = TRUE THEN 1 END) as studentsAttendance -- Added Attendance Count
+                COUNT(CASE WHEN s.Attendance = TRUE THEN 1 END) as studentsattendance -- Added Attendance Count
             FROM Courses c
             JOIN Organizations o ON c.OrganizationID = o.OrganizationID
             JOIN CourseTypes ct ON c.CourseTypeID = ct.CourseTypeID

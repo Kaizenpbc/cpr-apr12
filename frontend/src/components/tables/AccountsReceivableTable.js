@@ -96,7 +96,7 @@ const AccountsReceivableTable = ({
                                         <Button 
                                             variant="outlined" 
                                             size="small"
-                                            onClick={() => onViewDetailsClick(invoice.courseid)} // Link to course details/students
+                                            onClick={() => onViewDetailsClick(invoice.invoiceid)}
                                         >
                                             Details
                                         </Button>

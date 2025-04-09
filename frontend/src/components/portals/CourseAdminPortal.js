@@ -199,17 +199,24 @@ const CourseAdminPortal = () => {
         console.log('[AdminPortal] Setting up socket listener for attendance_updated');
         
         const handleAttendanceUpdate = ({ courseId, newAttendanceCount }) => {
-            console.log(`[Socket Event] attendance_updated received for Course ${courseId}:`, newAttendanceCount);
+            console.log(`[handleAttendanceUpdate] Event received. CourseID: ${courseId} (Type: ${typeof courseId}), New Count: ${newAttendanceCount} (Type: ${typeof newAttendanceCount}). Updating state...`);
             
-            // Update state for all relevant course lists
+            // Update state for all relevant course lists using the correct lowercase key 'studentsattendance'
+            let nextScheduledCoursesState;
+            setScheduledCourses(prev => {
+                console.log('[setScheduledCourses updater] Value of prev state:', prev);
+                nextScheduledCoursesState = prev.map(course => 
+                   course.courseid === courseId ? { ...course, studentsattendance: newAttendanceCount } : course
+                );
+                console.log('[handleAttendanceUpdate] Calculated next scheduledCourses state:', nextScheduledCoursesState);
+                return nextScheduledCoursesState; 
+            });
+
             setInstructorData(prev => prev.map(item => 
-                item.id === `course-${courseId}` ? { ...item, studentsAttendance: newAttendanceCount } : item
+                item.id === `course-${courseId}` ? { ...item, studentsattendance: newAttendanceCount } : item
             ));
-            setScheduledCourses(prev => prev.map(course => 
-                course.courseid === courseId ? { ...course, studentsAttendance: newAttendanceCount } : course
-            ));
-             setCompletedCourses(prev => prev.map(course => 
-                course.courseid === courseId ? { ...course, studentsAttendance: newAttendanceCount } : course
+            setCompletedCourses(prev => prev.map(course => 
+                course.courseid === courseId ? { ...course, studentsattendance: newAttendanceCount } : course
             ));
             // No need to update pending courses as they shouldn't have attendance yet
 

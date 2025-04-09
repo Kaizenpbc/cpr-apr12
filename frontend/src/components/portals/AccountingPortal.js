@@ -26,6 +26,7 @@ import ReadyForBillingTable from '../tables/ReadyForBillingTable'; // Import the
 import AccountsReceivableTable from '../tables/AccountsReceivableTable'; // Import AR table
 // Import ViewStudentsDialog if needed for the Review button
 import ViewStudentsDialog from '../dialogs/ViewStudentsDialog'; 
+import InvoiceDetailDialog from '../dialogs/InvoiceDetailDialog'; // Import Invoice Detail Dialog
 
 const drawerWidth = 240;
 
@@ -46,6 +47,9 @@ const AccountingPortal = () => {
     const [invoices, setInvoices] = useState([]);
     const [isLoadingInvoices, setIsLoadingInvoices] = useState(false);
     const [invoicesError, setInvoicesError] = useState('');
+    // Add state for Invoice Detail Dialog
+    const [showInvoiceDetailDialog, setShowInvoiceDetailDialog] = useState(false);
+    const [selectedInvoiceForDetail, setSelectedInvoiceForDetail] = useState(null);
 
     // Handler to load billing queue
     const loadBillingQueue = useCallback(async () => {
@@ -144,12 +148,42 @@ const AccountingPortal = () => {
     };
 
     // handleViewDetailsClick can likely reuse handleReviewCourseClick
-    const handleViewDetailsClick = handleReviewCourseClick; 
+    const handleViewDetailsClick = (invoiceId) => {
+        console.log("View Details clicked for invoice:", invoiceId);
+        setSelectedInvoiceForDetail(invoiceId);
+        setShowInvoiceDetailDialog(true);
+    };
 
-    const handleEmailInvoiceClick = (invoiceId) => {
-        console.log("Email Invoice clicked for invoice:", invoiceId);
-        alert("Email Invoice functionality not yet implemented.");
-        // TODO: Implement email sending logic (call backend API)
+    // Close handler for Invoice Detail Dialog
+    const handleInvoiceDetailDialogClose = () => {
+        setShowInvoiceDetailDialog(false);
+        setSelectedInvoiceForDetail(null);
+    };
+
+    const handleEmailInvoiceClick = async (invoiceId) => {
+        console.log(`Email Invoice clicked for invoice: ${invoiceId}`);
+        // alert("Email Invoice functionality not yet implemented."); // Remove alert
+        try {
+            // Call the new API function
+            const response = await api.emailInvoice(invoiceId);
+            if (response.success) {
+                let message = response.message || 'Email queued successfully.';
+                // If using Ethereal, log the preview URL
+                if (response.previewUrl) {
+                    console.log('Ethereal Preview URL:', response.previewUrl);
+                    message += ' Ethereal preview link logged to console.';
+                }
+                setSnackbar({ open: true, message: message, severity: 'success' });
+                // Optionally close the detail dialog if email is sent from there
+                // setShowInvoiceDetailDialog(false);
+                // setSelectedInvoiceForDetail(null);
+            } else {
+                throw new Error(response.message || 'Failed to send email via API.');
+            }
+        } catch (err) {
+            console.error(`Error sending email for invoice ${invoiceId}:`, err);
+            setSnackbar({ open: true, message: err.message || 'Failed to send email.', severity: 'error' });
+        }
     };
     // --- End Action Handlers ---
 
@@ -245,6 +279,17 @@ const AccountingPortal = () => {
                     open={showViewStudentsDialog}
                     onClose={handleViewStudentsDialogClose}
                     courseId={selectedCourseForView}
+                />
+            )}
+
+            {/* Invoice Detail Dialog */}
+            {showInvoiceDetailDialog && (
+                <InvoiceDetailDialog
+                    open={showInvoiceDetailDialog}
+                    onClose={handleInvoiceDetailDialogClose}
+                    invoiceId={selectedInvoiceForDetail}
+                    // Pass email handler down
+                    onEmailClick={handleEmailInvoiceClick} 
                 />
             )}
 
