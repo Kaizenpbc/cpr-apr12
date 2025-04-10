@@ -703,4 +703,22 @@ export const cancelCourse = async (courseId) => {
     }
 };
 
+// Admin: Get Instructor Workload Summary
+export const getInstructorWorkloads = async () => {
+    console.log('[API Service] Fetching instructor workload summary...');
+    try {
+        const response = await api.get('/admin/instructor-workload');
+        // Expecting { success: true, workload: [...] }
+        if (response && response.success) {
+            return response.workload;
+        } else {
+            throw new Error(response?.message || 'Failed to fetch workload data');
+        }
+    } catch (error) {
+        console.error('[API Service] Error fetching instructor workload:', error);
+        if (error instanceof Error) throw error;
+        throw new Error('Failed to fetch instructor workload on the server.');
+    }
+};
+
 export default api; 

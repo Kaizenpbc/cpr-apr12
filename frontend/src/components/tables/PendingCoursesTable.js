@@ -39,15 +39,16 @@ const PendingCoursesTable = ({ courses, onScheduleClick, onViewStudentsClick, on
             <Table stickyHeader aria-label="pending courses table">
                 <TableHead>
                     <TableRow>
-                        <TableCell>System Date</TableCell>
-                        <TableCell>Date Requested</TableCell>
-                        <TableCell>Course Number</TableCell>
-                        <TableCell>Organization</TableCell>
-                        <TableCell>Location</TableCell>
-                        <TableCell>Students Registered</TableCell>
-                        <TableCell>Notes</TableCell>
-                        <TableCell>Status</TableCell>
-                        <TableCell align="center">Actions</TableCell>
+                        <TableCell sx={{ fontWeight: 'bold' }}>System Date</TableCell>
+                        <TableCell sx={{ fontWeight: 'bold' }}>Date Requested</TableCell>
+                        <TableCell sx={{ fontWeight: 'bold' }}>Course Number</TableCell>
+                        <TableCell sx={{ fontWeight: 'bold' }}>Organization</TableCell>
+                        <TableCell sx={{ fontWeight: 'bold' }}>Location</TableCell>
+                        <TableCell sx={{ fontWeight: 'bold' }}>Course Type</TableCell>
+                        <TableCell sx={{ fontWeight: 'bold' }}>Students Registered</TableCell>
+                        <TableCell sx={{ fontWeight: 'bold' }}>Notes</TableCell>
+                        <TableCell sx={{ fontWeight: 'bold' }}>Status</TableCell>
+                        <TableCell align="center" sx={{ fontWeight: 'bold' }}>Actions</TableCell>
                     </TableRow>
                 </TableHead>
                 <TableBody>
@@ -62,28 +63,29 @@ const PendingCoursesTable = ({ courses, onScheduleClick, onViewStudentsClick, on
                             <TableCell>{course.coursenumber || '-'}</TableCell>
                             <TableCell>{course.organizationname || '-'}</TableCell>
                             <TableCell>{course.location || '-'}</TableCell>
+                            <TableCell>{course.coursenumber || '-'}</TableCell>
                             <TableCell align="center">{course.studentsregistered ?? '-'}</TableCell>
                             <TableCell>{course.notes || '-'}</TableCell>
                             <TableCell>{course.status || '-'}</TableCell>
                             <TableCell align="center">
                                 <Box sx={{ display: 'flex', gap: 0.5, justifyContent: 'center' }}>
                                     <Tooltip title="Schedule Instructor & Assign Date">
-                                        <Button 
-                                            variant="contained" 
+                                        <IconButton 
+                                            color="primary" 
                                             size="small"
                                             onClick={() => onScheduleClick(course)} // Pass full course object
                                         >
-                                            Schedule
-                                        </Button>
+                                            <EventIcon fontSize="small" />
+                                        </IconButton>
                                     </Tooltip>
                                     <Tooltip title="View Registered Students">
-                                        <Button 
-                                            variant="outlined" 
+                                        <IconButton 
+                                            color="info"
                                             size="small"
                                             onClick={() => onViewStudentsClick(course.courseid)}
                                         >
-                                            View Students
-                                        </Button>
+                                            <VisibilityIcon fontSize="small" />
+                                        </IconButton>
                                     </Tooltip>
                                     <Tooltip title="Cancel Course Request">
                                         <IconButton 

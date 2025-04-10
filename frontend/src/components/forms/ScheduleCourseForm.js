@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Box, TextField, Button, Select, MenuItem, FormControl, InputLabel, CircularProgress, Typography, Alert, Grid } from '@mui/material';
+import { Box, TextField, Button, Select, MenuItem, FormControl, InputLabel, CircularProgress, Typography, Alert, Grid, Paper } from '@mui/material';
 import * as api from '../../services/api';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -120,129 +120,129 @@ const ScheduleCourseForm = ({ onCourseScheduled }) => {
     }
 
     return (
-        <Box component="form" onSubmit={handleSubmit} noValidate sx={{ mt: 1 }}>
-            <Typography variant="body1" gutterBottom>
-                Please provide the details for the course you wish to schedule.
-            </Typography>
-            
-            {/* Log when attempting to render error alert */}
-            {error && console.log('[Render] Attempting to render Error Alert')}
-            {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
-            
-            {/* Log when attempting to render success alert */}
-            {successMessage && console.log('[Render] Attempting to render Success Alert with message:', successMessage)}
-            {successMessage && <Alert severity="success" sx={{ mb: 2 }}>{successMessage}</Alert>}
+        <Paper elevation={3} sx={{ p: { xs: 2, sm: 3 } }}>
+            <Box component="form" onSubmit={handleSubmit} noValidate>
+                <Typography variant="h6" gutterBottom mb={2}>
+                    Request a Course
+                </Typography>
+                
+                {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+                {successMessage && <Alert severity="success" sx={{ mb: 2 }}>{successMessage}</Alert>}
 
-            <Grid container spacing={2}>
-                <Grid xs={12}>
-                    <TextField 
-                        label="Organization"
-                        value={user.organizationName}
-                        fullWidth 
-                        disabled
-                        margin="normal"
-                    />
-                </Grid>
-                <Grid xs={12} md={6}>
-                    <TextField
-                        margin="normal"
-                        required
-                        fullWidth
-                        id="dateRequested"
-                        label="Date Requested"
-                        name="dateRequested"
-                        type="date" // Use date input type
-                        InputLabelProps={{
-                            shrink: true,
-                        }}
-                        value={formData.dateRequested}
-                        onChange={handleChange}
-                        disabled={isSubmitting}
-                    />
-                </Grid>
-                <Grid xs={12} md={6}>
-                    <TextField
-                        margin="normal"
-                        required
-                        fullWidth
-                        id="location"
-                        label="Location (e.g., Address or Room)"
-                        name="location"
-                        value={formData.location}
-                        onChange={handleChange}
-                        disabled={isSubmitting}
-                    />
-                </Grid>
-                <Grid xs={12} md={6}>
-                    <FormControl fullWidth margin="normal" required disabled={isLoadingTypes || isSubmitting}>
-                        <InputLabel id="courseTypeId-label">Type of Course</InputLabel>
-                        <Select
-                            labelId="courseTypeId-label"
-                            id="courseTypeId"
-                            value={formData.courseTypeId}
-                            label="Type of Course"
-                            name="courseTypeId"
+                <Grid container spacing={2.5}>
+                    {/* Organization (Read Only) - Keep full width */}
+                    <Grid item xs={12}> 
+                        <TextField 
+                            label="Organization"
+                            value={user.organizationName}
+                            fullWidth 
+                            disabled
+                            variant="filled" 
+                            InputProps={{ readOnly: true }}
+                        />
+                    </Grid>
+                    {/* Date Requested */}
+                    <Grid item xs={12} sm={6}>
+                        <TextField
+                            required
+                            fullWidth
+                            id="dateRequested"
+                            label="Date Requested"
+                            name="dateRequested"
+                            type="date" 
+                            InputLabelProps={{ shrink: true }}
+                            value={formData.dateRequested}
                             onChange={handleChange}
-                        >
-                            {isLoadingTypes ? (
-                                <MenuItem disabled value="">
-                                    <CircularProgress size={20} sx={{ mr: 1 }}/> Loading Types...
-                                </MenuItem>
-                            ) : courseTypes.length > 0 ? (
-                                courseTypes.map((type) => (
-                                    <MenuItem key={type.coursetypeid} value={type.coursetypeid}>
-                                        {type.coursetypename}
+                            disabled={isSubmitting}
+                        />
+                    </Grid>
+                    {/* Course Type Dropdown */}
+                    <Grid item xs={12} sm={6}>
+                        <FormControl fullWidth required disabled={isLoadingTypes || isSubmitting}>
+                            <InputLabel id="courseTypeId-label">Type of Course</InputLabel>
+                            <Select
+                                labelId="courseTypeId-label"
+                                id="courseTypeId"
+                                value={formData.courseTypeId}
+                                label="Type of Course" 
+                                name="courseTypeId"
+                                onChange={handleChange}
+                            >
+                                {isLoadingTypes ? (
+                                    <MenuItem disabled value="">
+                                        <CircularProgress size={20} sx={{ mr: 1 }}/> Loading Types...
                                     </MenuItem>
-                                ))
-                            ) : (
-                                <MenuItem disabled value="">
-                                    No course types available
-                                </MenuItem>
-                            )}
-                        </Select>
-                    </FormControl>
+                                ) : courseTypes.length > 0 ? (
+                                    courseTypes.map((type) => (
+                                        <MenuItem key={type.coursetypeid} value={type.coursetypeid}>
+                                            {type.coursetypename}
+                                        </MenuItem>
+                                    ))
+                                ) : (
+                                    <MenuItem disabled value="">
+                                        No course types available
+                                    </MenuItem>
+                                )}
+                            </Select>
+                        </FormControl>
+                    </Grid>
+                    {/* Location */}
+                    <Grid item xs={12} sm={6}>
+                        <TextField
+                            required
+                            fullWidth
+                            id="location"
+                            label="Location (Address/Room)"
+                            name="location"
+                            value={formData.location}
+                            onChange={handleChange}
+                            disabled={isSubmitting}
+                        />
+                    </Grid>
+                    {/* Students Registered */}
+                    <Grid item xs={12} sm={6}>
+                        <TextField
+                            required
+                            fullWidth
+                            id="registeredStudents"
+                            label="# Students Registered"
+                            name="registeredStudents"
+                            type="number"
+                            value={formData.registeredStudents}
+                            onChange={handleChange}
+                            InputProps={{ inputProps: { min: 0 } }} 
+                            disabled={isSubmitting}
+                        />
+                    </Grid>
+                    {/* Notes */}
+                    <Grid item xs={12}>
+                        <TextField
+                            fullWidth
+                            id="notes"
+                            label="Notes / Special Instructions (Optional)"
+                            name="notes"
+                            value={formData.notes}
+                            onChange={handleChange}
+                            multiline
+                            rows={3} 
+                            disabled={isSubmitting}
+                        />
+                    </Grid>
+                     {/* Submit Button */}
+                    <Grid item xs={12}>
+                        <Button
+                            type="submit"
+                            fullWidth
+                            variant="contained"
+                            sx={{ mt: 2 }}
+                            disabled={isSubmitting || isLoadingTypes}
+                        >
+                            {isSubmitting ? <CircularProgress size={24} /> : 'Request Course Schedule'}
+                        </Button>
+                    </Grid>
                 </Grid>
-                <Grid xs={12} md={6}>
-                    <TextField
-                        margin="normal"
-                        required
-                        fullWidth
-                        id="registeredStudents"
-                        label="# of Students Registered"
-                        name="registeredStudents"
-                        type="number"
-                        value={formData.registeredStudents}
-                        onChange={handleChange}
-                        InputProps={{ inputProps: { min: 0 } }} 
-                        disabled={isSubmitting}
-                    />
-                </Grid>
-                <Grid xs={12}>
-                    <TextField
-                        margin="normal"
-                        fullWidth
-                        id="notes"
-                        label="Notes (Optional, max 50 chars)"
-                        name="notes"
-                        value={formData.notes}
-                        onChange={handleChange}
-                        multiline
-                        rows={2} // Adjust rows as needed
-                        inputProps={{ maxLength: 50 }} 
-                        disabled={isSubmitting}
-                    />
-                </Grid>
-            </Grid>
-            <Button
-                type="submit"
-                fullWidth
-                variant="contained"
-                sx={{ mt: 3, mb: 2 }}
-                disabled={isSubmitting || isLoadingTypes}
-            >
-                {isSubmitting ? <CircularProgress size={24} /> : 'Request Course Schedule'}
-            </Button>
-        </Box>
+            </Box>
+        </Paper>
     );
 };
 

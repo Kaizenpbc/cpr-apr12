@@ -38,17 +38,17 @@ const ScheduledCoursesTable = ({ courses, onViewStudentsClick, onCancelClick }) 
             <Table stickyHeader aria-label="scheduled courses table">
                 <TableHead>
                     <TableRow>
-                        <TableCell>System Date</TableCell>
-                        <TableCell>Date Scheduled</TableCell>
-                        <TableCell>Course Number</TableCell>
-                        <TableCell>Organization</TableCell>
-                        <TableCell>Location</TableCell>
-                        <TableCell>Students Registered</TableCell>
-                        <TableCell>Students Attendance</TableCell>
-                        <TableCell>Notes</TableCell>
-                        <TableCell>Status</TableCell>
-                        <TableCell>Instructor</TableCell>
-                        <TableCell align="center">Actions</TableCell>
+                        <TableCell sx={{ fontWeight: 'bold' }}>System Date</TableCell>
+                        <TableCell sx={{ fontWeight: 'bold' }}>Date Scheduled</TableCell>
+                        <TableCell sx={{ fontWeight: 'bold' }}>Course Number</TableCell>
+                        <TableCell sx={{ fontWeight: 'bold' }}>Organization</TableCell>
+                        <TableCell sx={{ fontWeight: 'bold' }}>Location</TableCell>
+                        <TableCell sx={{ fontWeight: 'bold' }}>Students Registered</TableCell>
+                        <TableCell sx={{ fontWeight: 'bold' }}>Students Attendance</TableCell>
+                        <TableCell sx={{ fontWeight: 'bold' }}>Notes</TableCell>
+                        <TableCell sx={{ fontWeight: 'bold' }}>Status</TableCell>
+                        <TableCell sx={{ fontWeight: 'bold' }}>Instructor</TableCell>
+                        <TableCell align="center" sx={{ fontWeight: 'bold' }}>Actions</TableCell>
                     </TableRow>
                 </TableHead>
                 <TableBody>

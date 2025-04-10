@@ -15,6 +15,8 @@ import {
     CircularProgress,
     Alert,
     Snackbar,
+    AppBar,
+    Toolbar
 } from '@mui/material';
 import {
     EditCalendar as ScheduleIcon,
@@ -45,9 +47,22 @@ const OrganizationPortal = () => {
     const [orgCoursesSortBy, setOrgCoursesSortBy] = useState('daterequested'); // Default sort by requested date
     // --- End Sorting State ---
 
+    // Add showSnackbar helper (needed for logout message)
+    const showSnackbar = useCallback((message, severity = 'success') => {
+        setSnackbar({ open: true, message, severity });
+    }, []);
+
     const handleLogout = () => {
-        logout();
-        navigate('/');
+        // Construct the message before logging out
+        const firstName = user?.FirstName || 'Org User'; // Use FirstName from user object
+        const logoutMessage = `Good Bye ${firstName}, Have a Pleasant Day!`;
+        showSnackbar(logoutMessage, 'info'); // Show the message
+        
+        // Delay logout slightly
+        setTimeout(() => {
+            logout();
+            navigate('/');
+        }, 1500); 
     };
 
     const loadOrgCourses = useCallback(async () => {
@@ -183,6 +198,24 @@ const OrganizationPortal = () => {
 
     return (
         <Box sx={{ display: 'flex' }}>
+            {/* --- AppBar --- */}
+            <AppBar
+                position="fixed"
+                sx={{ zIndex: (theme) => theme.zIndex.drawer + 1 }} 
+            >
+                <Toolbar>
+                    {/* Optional Logo */}
+                    <Typography variant="h6" noWrap component="div" sx={{ flexGrow: 1, textAlign: 'center' }}>
+                        Organization Portal
+                    </Typography>
+                    <Typography variant="body1" noWrap sx={{ mr: 2 }}>
+                         Welcome {user?.FirstName || 'Org User'}!
+                    </Typography>
+                    {/* Optional: Logout Button */}
+                </Toolbar>
+            </AppBar>
+
+            {/* --- Drawer --- */}
             <Drawer
                 variant="permanent"
                 sx={{
@@ -191,18 +224,32 @@ const OrganizationPortal = () => {
                     '& .MuiDrawer-paper': {
                         width: drawerWidth,
                         boxSizing: 'border-box',
+                        // Removed mt: 8 (or similar) - Toolbar handles offset
                     },
                 }}
             >
-                <Box sx={{ overflow: 'auto', mt: 8 }}>
-                    <List>
+                 {/* Toolbar spacer */}
+                 <Toolbar /> 
+                 <Box sx={{ overflow: 'auto' }}>
+                     <List>
                         <ListItem 
                             component="div" 
                             selected={selectedView === 'schedule'}
                             onClick={() => setSelectedView('schedule')}
-                            sx={{ cursor: 'pointer' }}
+                            sx={{
+                                cursor: 'pointer', 
+                                py: 1.5, 
+                                backgroundColor: selectedView === 'schedule' ? 'primary.light' : 'transparent',
+                                color: selectedView === 'schedule' ? 'primary.contrastText' : 'inherit',
+                                '& .MuiListItemIcon-root': {
+                                    color: selectedView === 'schedule' ? 'primary.contrastText' : 'inherit',
+                                },
+                                '&:hover': {
+                                    backgroundColor: selectedView === 'schedule' ? 'primary.main' : 'action.hover',
+                                }
+                            }}
                         >
-                            <ListItemIcon>
+                            <ListItemIcon sx={{ color: 'inherit' }}>
                                 <ScheduleIcon />
                             </ListItemIcon>
                             <ListItemText primary="Schedule a Course" />
@@ -211,9 +258,20 @@ const OrganizationPortal = () => {
                             component="div" 
                             selected={selectedView === 'myCourses'}
                             onClick={() => setSelectedView('myCourses')}
-                            sx={{ cursor: 'pointer' }}
+                            sx={{
+                                cursor: 'pointer', 
+                                py: 1.5, 
+                                backgroundColor: selectedView === 'myCourses' ? 'primary.light' : 'transparent',
+                                color: selectedView === 'myCourses' ? 'primary.contrastText' : 'inherit',
+                                '& .MuiListItemIcon-root': {
+                                    color: selectedView === 'myCourses' ? 'primary.contrastText' : 'inherit',
+                                },
+                                '&:hover': {
+                                    backgroundColor: selectedView === 'myCourses' ? 'primary.main' : 'action.hover',
+                                }
+                            }}
                         >
-                            <ListItemIcon>
+                            <ListItemIcon sx={{ color: 'inherit' }}>
                                 <ListIcon />
                             </ListItemIcon>
                             <ListItemText primary="My Courses" />
@@ -224,23 +282,31 @@ const OrganizationPortal = () => {
                         <ListItem 
                             component="div" 
                             onClick={handleLogout}
-                            sx={{ cursor: 'pointer' }}
+                            sx={{
+                                cursor: 'pointer', 
+                                py: 1.5, 
+                                '&:hover': { backgroundColor: 'action.hover'} 
+                            }}
                         >
                             <ListItemIcon>
                                 <LogoutIcon />
                             </ListItemIcon>
                             <ListItemText primary="Logout" />
                         </ListItem>
-                    </List>
-                </Box>
+                     </List>
+                 </Box>
             </Drawer>
-
-            <Box component="main" sx={{ flexGrow: 1, p: 3, mt: 8 }}>
+            {/* --- Main Content --- */}
+            <Box component="main" sx={{ flexGrow: 1, p: 3 }}>
+                 {/* Toolbar spacer */}
+                 <Toolbar />
                 <Container maxWidth="lg">
+                    {/* Remove original welcome message */}
+                    {/* 
                     <Typography variant="h4" gutterBottom>
                         Welcome, {user?.FirstName || 'Organization User'}
-                    </Typography>
-                    
+                    </Typography> 
+                    */}
                     {renderSelectedView()}
                 </Container>
             </Box>
@@ -264,12 +330,13 @@ const OrganizationPortal = () => {
                 />
             )}
             
-            {/* Snackbar for upload success message */}
+            {/* Snackbar for messages */}
             <Snackbar
                 open={snackbar.open}
                 autoHideDuration={6000}
                 onClose={() => setSnackbar({ ...snackbar, open: false })}
-                anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+                // Change anchorOrigin for top-center position
+                anchorOrigin={{ vertical: 'top', horizontal: 'center' }} 
             >
                 <Alert 
                     onClose={() => setSnackbar({ ...snackbar, open: false })} 

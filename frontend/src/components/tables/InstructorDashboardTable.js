@@ -41,6 +41,7 @@ const InstructorDashboardTable = ({ data, sortOrder, sortBy, onSortRequest }) =>
                         <TableCell
                             key="instructorName"
                             sortDirection={sortBy === 'instructorName' ? sortOrder : false}
+                            sx={{ fontWeight: 'bold' }}
                         >
                             <TableSortLabel
                                 active={sortBy === 'instructorName'}
@@ -58,6 +59,7 @@ const InstructorDashboardTable = ({ data, sortOrder, sortBy, onSortRequest }) =>
                         <TableCell
                             key="date"
                             sortDirection={sortBy === 'date' ? sortOrder : false}
+                            sx={{ fontWeight: 'bold' }}
                         >
                             <TableSortLabel
                                 active={sortBy === 'date'}
@@ -72,15 +74,16 @@ const InstructorDashboardTable = ({ data, sortOrder, sortBy, onSortRequest }) =>
                                 ) : null}
                             </TableSortLabel>
                         </TableCell>
-                        <TableCell>Course Number</TableCell>
-                        <TableCell>Organization</TableCell>
-                        <TableCell>Location</TableCell>
-                        <TableCell>Students Registered</TableCell>
-                        <TableCell>Students Attendance</TableCell>
-                        <TableCell>Notes</TableCell>
+                        <TableCell sx={{ fontWeight: 'bold' }}>Course Number</TableCell>
+                        <TableCell sx={{ fontWeight: 'bold' }}>Organization</TableCell>
+                        <TableCell sx={{ fontWeight: 'bold' }}>Location</TableCell>
+                        <TableCell sx={{ fontWeight: 'bold' }}>Students Registered</TableCell>
+                        <TableCell sx={{ fontWeight: 'bold' }}>Students Attendance</TableCell>
+                        <TableCell sx={{ fontWeight: 'bold' }}>Notes</TableCell>
                         <TableCell
                             key="status"
                             sortDirection={sortBy === 'status' ? sortOrder : false}
+                            sx={{ fontWeight: 'bold' }}
                         >
                             <TableSortLabel
                                 active={sortBy === 'status'}

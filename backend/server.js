@@ -16,7 +16,7 @@ const courseRoutes = require('./routes/courses'); // Add this
 const instructorRoutes = require('./routes/instructors'); // Import instructor routes
 const authenticateToken = require('./middleware/authenticateToken'); // Import middleware
 
-console.log('Starting server setup...'); // Log start
+console.log('[Server Start] Required modules loaded.'); // <<< ADD LOG
 
 const app = express();
 const server = http.createServer(app); // Create HTTP server from Express app
@@ -32,7 +32,7 @@ console.log('Database pool error listener attached.');
 const io = new Server(server, {
   cors: { origin: "*" } // Simplified CORS for testing
 });
-console.log('Socket.IO server created.');
+console.log('[Server Start] Socket.IO server attached to HTTP server.'); // <<< ADD LOG
 
 // const port = process.env.PORT || 3001; // Moved port definition lower
 
@@ -40,14 +40,15 @@ console.log('Socket.IO server created.');
 const userSockets = new Map(); 
 
 // Apply Middleware
-console.log('Applying middleware...');
+console.log('[Server Start] Applying middleware (CORS, JSON)...');
 app.use(cors());
 app.use(express.json());
 // Note: authenticateToken is applied per-route or per-router
-console.log('Middleware applied (cors, express.json).');
+console.log('[Server Start] Core middleware applied.'); // <<< ADD LOG
 
 // Mount route handlers
 // app.use('/api/auth', authRoutes); // Example
+console.log('[Server Start] Mounting route handlers...');
 app.use('/api/organizations', organizationRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/course-types', courseTypeRoutes);
@@ -55,6 +56,7 @@ app.use('/api/pricing-rules', pricingRuleRoutes);
 app.use('/api/accounting', accountingRoutes);
 app.use('/api/courses', courseRoutes); // Add this (ensure base path is correct)
 app.use('/api/instructor', instructorRoutes); // Mount instructor routes
+console.log('[Server Start] Route handlers mounted.'); // <<< ADD LOG
 
 // Test database connection - Enhanced
 app.get('/api/test', async (req, res) => {
@@ -373,25 +375,23 @@ app.post('/api/courses/request', authenticateToken, async (req, res) => {
 
 // --- Admin: Get Instructor Dashboard Data ---
 app.get('/api/admin/instructor-dashboard', authenticateToken, async (req, res) => {
-    // Optional: Add role check here if needed
-    // if (req.user.role !== 'Admin') { 
-    //     return res.status(403).json({ success: false, message: 'Unauthorized' });
-    // }
-
+    console.log('[API GET /admin/instructor-dashboard] START'); // <<< LOG
     try {
-        // 1. Get all Instructors
+        console.log('[API GET /admin/instructor-dashboard] Querying instructors...'); // <<< LOG
         const instructorsRes = await pool.query(`
             SELECT i.InstructorID, u.UserID, u.FirstName, u.LastName 
             FROM Instructors i 
             JOIN Users u ON i.UserID = u.UserID
         `);
         const instructors = instructorsRes.rows;
+        console.log(`[API GET /admin/instructor-dashboard] Found ${instructors.length} instructors.`); // <<< LOG
 
-        // 2. Get all Availability
+        console.log('[API GET /admin/instructor-dashboard] Querying availability...'); // <<< LOG
         const availabilityRes = await pool.query('SELECT InstructorID, AvailableDate FROM InstructorAvailability');
         const availability = availabilityRes.rows;
+        console.log(`[API GET /admin/instructor-dashboard] Found ${availability.length} availability entries.`); // <<< LOG
 
-        // 3. Get all Scheduled/Completed Courses with Org info
+        console.log('[API GET /admin/instructor-dashboard] Querying courses...'); // <<< LOG
         const coursesRes = await pool.query(`
             SELECT 
                 c.CourseID, c.InstructorID, c.OrganizationID, c.DateScheduled, c.Location, 
@@ -411,8 +411,9 @@ app.get('/api/admin/instructor-dashboard', authenticateToken, async (req, res) =
                      ct.CourseTypeName, o.OrganizationName
         `);
         const courses = coursesRes.rows;
+        console.log(`[API GET /admin/instructor-dashboard] Found ${courses.length} courses.`); // <<< LOG
 
-        // 4. Combine the data
+        console.log('[API GET /admin/instructor-dashboard] Processing data...'); // <<< LOG
         const dashboardData = [];
 
         instructors.forEach(inst => {
@@ -459,12 +460,15 @@ app.get('/api/admin/instructor-dashboard', authenticateToken, async (req, res) =
         // Sort the combined data (optional, e.g., by date then instructor)
         dashboardData.sort((a, b) => new Date(a.date) - new Date(b.date) || a.instructorName.localeCompare(b.instructorName));
 
+        console.log('[API GET /admin/instructor-dashboard] Data processing complete.'); // <<< LOG
+        
         res.json({ success: true, data: dashboardData });
 
     } catch (err) {
-        console.error("Error fetching instructor dashboard data:", err);
+        console.error("[API GET /admin/instructor-dashboard] Error:", err); // <<< LOG ERROR
         res.status(500).json({ success: false, message: 'Failed to fetch instructor dashboard data' });
     }
+    console.log('[API GET /admin/instructor-dashboard] END'); // <<< LOG
 });
 
 // --- Admin: Get Pending Courses ---
@@ -829,18 +833,97 @@ app.get('/api/instructor/completed-classes', authenticateToken, async (req, res)
 
 // --- Admin: Get All Instructors ---
 app.get('/api/admin/instructors', authenticateToken, async (req, res) => {
+    console.log('[API GET /admin/instructors] START'); // <<< LOG
     try {
+        console.log('[API GET /admin/instructors] Querying database...'); // <<< LOG
         const result = await pool.query(`
             SELECT i.InstructorID, u.FirstName, u.LastName 
             FROM Instructors i 
             JOIN Users u ON i.UserID = u.UserID 
             ORDER BY u.LastName, u.FirstName
         `);
+        console.log(`[API GET /admin/instructors] Query successful, found ${result.rows.length} instructors.`); // <<< LOG
         res.json({ success: true, instructors: result.rows });
     } catch (err) {
-        console.error("Error fetching instructors:", err);
+        console.error("[API GET /admin/instructors] Error:", err); // <<< LOG ERROR
         res.status(500).json({ success: false, message: 'Failed to fetch instructors' });
     }
+    console.log('[API GET /admin/instructors] END'); // <<< LOG
+});
+
+// --- Admin: Get Instructor Workload Summary (Current Month) ---
+app.get('/api/admin/instructor-workload', authenticateToken, async (req, res) => {
+    console.log('[API GET /admin/instructor-workload] START'); // <<< LOG
+    try {
+        const today = new Date();
+        const year = today.getFullYear();
+        const month = today.getMonth() + 1; // JS months are 0-indexed
+
+        // Use placeholders for date calculations for safety
+        const firstDayOfMonth = `${year}-${String(month).padStart(2, '0')}-01`;
+        const firstDayOfNextMonthDate = new Date(year, month, 1); // Month is 0-indexed here
+        // Format first day of next month for query
+        const nextMonthYear = firstDayOfNextMonthDate.getFullYear();
+        const nextMonthMonth = firstDayOfNextMonthDate.getMonth() + 1;
+        const firstDayOfNextMonth = `${nextMonthYear}-${String(nextMonthMonth).padStart(2, '0')}-01`;
+        
+        // Format today as YYYY-MM-DD for upcoming comparison
+        const todayFormatted = `${year}-${String(month).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+
+        console.log(`[Workload] Calculating for month starting: ${firstDayOfMonth}, ending before: ${firstDayOfNextMonth}, today: ${todayFormatted}`);
+
+        console.log('[API GET /admin/instructor-workload] Querying database...'); // <<< LOG
+        const result = await pool.query(`
+            SELECT 
+                i.InstructorID, 
+                u.FirstName, 
+                u.LastName,
+                COALESCE(completed.count, 0) AS "completedThisMonth",
+                COALESCE(scheduled.count, 0) AS "scheduledUpcomingThisMonth"
+            FROM Instructors i
+            JOIN Users u ON i.UserID = u.UserID
+            -- Subquery for completed courses this month
+            LEFT JOIN (
+                SELECT InstructorID, COUNT(*) as count
+                FROM Courses
+                WHERE Status = 'Completed' 
+                  AND DateScheduled >= $1 AND DateScheduled < $2
+                GROUP BY InstructorID
+            ) completed ON i.InstructorID = completed.InstructorID
+            -- Subquery for scheduled upcoming courses this month
+            LEFT JOIN (
+                SELECT InstructorID, COUNT(*) as count
+                FROM Courses
+                WHERE Status = 'Scheduled' 
+                  AND DateScheduled >= $3 -- From today onwards
+                  AND DateScheduled < $2 -- Within the current month
+                GROUP BY InstructorID
+            ) scheduled ON i.InstructorID = scheduled.InstructorID
+            ORDER BY u.LastName, u.FirstName;
+        `, [firstDayOfMonth, firstDayOfNextMonth, todayFormatted]);
+        console.log(`[API GET /admin/instructor-workload] Query successful.`); // <<< LOG
+
+        console.log('[API GET /admin/instructor-workload] Mapping data...'); // <<< LOG
+        const workloadData = result.rows.map(row => {
+            const completed = parseInt(row.completedThisMonth || 0, 10);
+            const scheduled = parseInt(row.scheduledUpcomingThisMonth || 0, 10);
+            return {
+                instructorId: row.instructorid,
+                name: `${row.firstname} ${row.lastname}`,
+                completedThisMonth: completed,
+                scheduledUpcomingThisMonth: scheduled,
+                totalWorkloadThisMonth: completed + scheduled // Calculate total
+            };
+        });
+        console.log(`[API GET /admin/instructor-workload] Found workload for ${workloadData.length} instructors.`);
+        
+        res.json({ success: true, workload: workloadData });
+
+    } catch (err) {
+        console.error("[API GET /admin/instructor-workload] Error:", err); // <<< LOG ERROR
+        res.status(500).json({ success: false, message: 'Failed to fetch instructor workload data.' });
+    }
+    console.log('[API GET /admin/instructor-workload] END'); // <<< LOG
 });
 
 // --- Admin: Schedule a Pending Course ---
@@ -947,7 +1030,7 @@ io.on('connection', (socket) => {
         console.error(`[Socket.IO] Error on socket ${socket.id}:`, err);
     });
 });
-console.log('Socket.IO event handlers attached.');
+console.log('[Server Start] Socket.IO connection handler attached.'); // <<< ADD LOG
 // --- End Socket.IO --- 
 
 // --- Global Error Handlers ---
@@ -962,11 +1045,11 @@ process.on('unhandledRejection', (reason, promise) => {
   console.error('[FATAL] Unhandled Rejection at:', promise);
   console.error('Reason:', reason);
 });
-console.log('Global error handlers (uncaughtException, unhandledRejection) attached.');
+console.log('[Server Start] Global error handlers attached.'); // <<< ADD LOG
 
 // --- Start Server ---
 const port = process.env.PORT || 3001; // Define port here, default to 3001
-console.log(`[PORT CHECK] process.env.PORT is: ${process.env.PORT}, Determined port: ${port}`);
+console.log(`[Server Start] Attempting to listen on port ${port}...`); // <<< ADD LOG
 
 try {
   console.log(`Attempting to start server on port ${port}...`);

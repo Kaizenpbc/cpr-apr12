@@ -39,7 +39,7 @@ const CompletedCoursesTable = ({ courses, onViewStudentsClick, onBillClick, sort
             <Table stickyHeader aria-label="completed courses table">
                 <TableHead>
                     <TableRow>
-                        <TableCell>System Date</TableCell>
+                        <TableCell sx={{ fontWeight: 'bold' }}>System Date</TableCell>
                         <TableCell
                             key="date"
                             sortDirection={sortBy === 'date' ? sortOrder : false}
@@ -57,7 +57,7 @@ const CompletedCoursesTable = ({ courses, onViewStudentsClick, onBillClick, sort
                                 ) : null}
                             </TableSortLabel>
                         </TableCell>
-                        <TableCell>Course Number</TableCell>
+                        <TableCell sx={{ fontWeight: 'bold' }}>Course Number</TableCell>
                         <TableCell
                             key="organization"
                             sortDirection={sortBy === 'organization' ? sortOrder : false}
@@ -76,8 +76,8 @@ const CompletedCoursesTable = ({ courses, onViewStudentsClick, onBillClick, sort
                             </TableSortLabel>
                         </TableCell>
                         <TableCell>Location</TableCell>
-                        <TableCell>Students Registered</TableCell>
-                        <TableCell>Students Attendance</TableCell>
+                        <TableCell sx={{ fontWeight: 'bold' }}>Students Registered</TableCell>
+                        <TableCell sx={{ fontWeight: 'bold' }}>Students Attendance</TableCell>
                         <TableCell>Notes</TableCell>
                         <TableCell>Status</TableCell>
                         <TableCell
@@ -97,7 +97,7 @@ const CompletedCoursesTable = ({ courses, onViewStudentsClick, onBillClick, sort
                                 ) : null}
                             </TableSortLabel>
                         </TableCell>
-                        <TableCell align="center">Actions</TableCell>
+                        <TableCell align="center" sx={{ fontWeight: 'bold' }}>Actions</TableCell>
                     </TableRow>
                 </TableHead>
                 <TableBody>

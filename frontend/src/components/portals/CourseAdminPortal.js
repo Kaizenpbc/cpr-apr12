@@ -17,7 +17,9 @@ import {
     Select, MenuItem, FormControl, InputLabel,
     TextField,
     Button,
-    TableSortLabel
+    TableSortLabel,
+    AppBar,
+    Toolbar
 } from '@mui/material';
 import {
     Dashboard as DashboardIcon,
@@ -32,6 +34,7 @@ import InstructorDashboardTable from '../tables/InstructorDashboardTable';
 import PendingCoursesTable from '../tables/PendingCoursesTable';
 import ScheduledCoursesTable from '../tables/ScheduledCoursesTable';
 import CompletedCoursesTable from '../tables/CompletedCoursesTable';
+import InstructorWorkloadSummaryTable from '../tables/InstructorWorkloadSummaryTable';
 import ViewStudentsDialog from '../dialogs/ViewStudentsDialog';
 import ScheduleCourseDialog from '../dialogs/ScheduleCourseDialog';
 
@@ -44,6 +47,9 @@ const CourseAdminPortal = () => {
     const [instructorData, setInstructorData] = useState([]);
     const [isLoadingInstructors, setIsLoadingInstructors] = useState(false);
     const [instructorsError, setInstructorsError] = useState('');
+    const [instructorWorkloads, setInstructorWorkloads] = useState([]);
+    const [isLoadingWorkload, setIsLoadingWorkload] = useState(false);
+    const [workloadError, setWorkloadError] = useState('');
     const [pendingCourses, setPendingCourses] = useState([]);
     const [isLoadingPending, setIsLoadingPending] = useState(false);
     const [pendingError, setPendingError] = useState('');
@@ -68,36 +74,65 @@ const CourseAdminPortal = () => {
     const [instructorSortBy, setInstructorSortBy] = useState('date');
     const [completedSortOrder, setCompletedSortOrder] = useState('desc');
     const [completedSortBy, setCompletedSortBy] = useState('date');
+    const [orgCoursesSortOrder, setOrgCoursesSortOrder] = useState('asc');
+    const [orgCoursesSortBy, setOrgCoursesSortBy] = useState('daterequested');
 
-    // --- Define showSnackbar helper ---
+    // --- useCallback wrapped functions FIRST ---
     const showSnackbar = useCallback((message, severity = 'success') => {
         setSnackbar({ open: true, message, severity });
-    }, []); // Depends only on stable setter
+    }, []);
 
     const handleLogout = () => {
-        logout();
-        navigate('/');
+        // Add Snackbar message
+        const firstName = user?.FirstName || 'Admin'; 
+        const logoutMessage = `Goodbye ${firstName}, Have a Productive Day!`;
+        showSnackbar(logoutMessage, 'info');
+
+        setTimeout(() => {
+            logout();
+            navigate('/');
+        }, 1500); 
     };
 
-    const loadInstructorData = useCallback(async () => {
+    const loadInstructorViewData = useCallback(async () => {
+        // Load main dashboard data
         setIsLoadingInstructors(true);
         setInstructorsError('');
-        console.log('[loadInstructorData] Fetching...'); // Log start
-        try {
-            const data = await api.getInstructorDashboard();
-            console.log('[loadInstructorData] API Response:', data);
-            setInstructorData(data);
-            console.log('[loadInstructorData] State updated:', data);
-        } catch (err) {
-            console.error('Error loading instructor dashboard:', err);
-            const errorMsg = err.message || 'Failed to load instructor data.';
-            setInstructorsError(errorMsg);
-            console.log('[loadInstructorData] Error state set:', errorMsg);
-            setInstructorData([]);
-        } finally {
-            setIsLoadingInstructors(false);
-            console.log('[loadInstructorData] Finished.');
-        }
+        console.log('[loadInstructorViewData] Fetching main dashboard data...'); 
+        const dashboardPromise = api.getInstructorDashboard()
+            .then(data => {
+                console.log('[loadInstructorViewData] Main dashboard API Response:', data);
+                setInstructorData(data);
+            })
+            .catch(err => {
+                console.error('Error loading instructor dashboard:', err);
+                const errorMsg = err.message || 'Failed to load instructor data.';
+                setInstructorsError(errorMsg);
+                setInstructorData([]);
+            })
+            .finally(() => setIsLoadingInstructors(false));
+
+        // Load workload summary data
+        setIsLoadingWorkload(true);
+        setWorkloadError('');
+        console.log('[loadInstructorViewData] Fetching workload summary...');
+        const workloadPromise = api.getInstructorWorkloads()
+            .then(data => {
+                console.log('[loadInstructorViewData] Workload API Response:', data);
+                setInstructorWorkloads(data || []);
+            })
+            .catch(err => {
+                console.error('Error loading instructor workload:', err);
+                const errorMsg = err.message || 'Failed to load workload summary.';
+                setWorkloadError(errorMsg);
+                setInstructorWorkloads([]);
+            })
+            .finally(() => setIsLoadingWorkload(false));
+        
+        // Wait for both fetches to complete (optional, could render parts as they load)
+        await Promise.all([dashboardPromise, workloadPromise]);
+        console.log('[loadInstructorViewData] Finished loading all data for instructor view.');
+
     }, []);
 
     const loadPendingCourses = useCallback(async () => {
@@ -173,17 +208,38 @@ const CourseAdminPortal = () => {
         }
     }, []);
 
+    const loadWorkloadSummary = useCallback(async () => {
+        setIsLoadingWorkload(true);
+        setWorkloadError('');
+        console.log('[loadWorkloadSummary] Fetching workload summary...');
+        try {
+            const data = await api.getInstructorWorkloads();
+            console.log('[loadWorkloadSummary] Workload API Response:', data);
+            setInstructorWorkloads(data || []);
+        } catch (err) {
+            console.error('Error loading instructor workload:', err);
+            const errorMsg = err.message || 'Failed to load workload summary.';
+            setWorkloadError(errorMsg);
+            setInstructorWorkloads([]);
+        } finally {
+            setIsLoadingWorkload(false);
+        }
+    }, []);
+
+    // --- useEffect hooks NEXT ---
     useEffect(() => {
         loadAllInstructors();
     }, [loadAllInstructors]);
 
+    // Main useEffect to load data based on selected view
     useEffect(() => {
         if (selectedView === 'instructors') {
-            console.log('[useEffect] Loading instructor data...');
-            loadInstructorData();
+            console.log('[useEffect] Loading ALL instructor view data...');
+            loadInstructorViewData();
         } else if (selectedView === 'pending') {
-            console.log('[useEffect] Loading pending courses...');
+            console.log('[useEffect] Loading pending courses AND workload summary...');
             loadPendingCourses();
+            loadWorkloadSummary();
         } else if (selectedView === 'scheduled') {
             console.log('[useEffect] Loading scheduled courses...');
             loadScheduledCourses();
@@ -191,7 +247,7 @@ const CourseAdminPortal = () => {
             console.log('[useEffect] Loading completed courses...');
             loadCompletedCourses();
         }
-    }, [selectedView, loadInstructorData, loadPendingCourses, loadScheduledCourses, loadCompletedCourses, loadAllInstructors]);
+    }, [selectedView, loadInstructorViewData, loadPendingCourses, loadScheduledCourses, loadCompletedCourses, loadWorkloadSummary]);
 
     useEffect(() => {
         if (!socket) return; // Don't run if socket isn't ready
@@ -370,8 +426,20 @@ const CourseAdminPortal = () => {
                 
                 console.log(`[renderSelectedView: instructors] State: isLoading=${isLoadingInstructors}, error=${instructorsError}, ALL_DATA_LEN=${instructorData.length}, SORTED_FILTERED_DATA_LEN=${filteredInstructorData.length}`);
                 
+                console.log(`[renderSelectedView: instructors] Workload State: isLoading=${isLoadingWorkload}, error=${workloadError}, DATA_LEN=${instructorWorkloads.length}`);
+
                 return (
                     <>
+                        {/* Render Workload Summary Table */}
+                        {isLoadingWorkload ? (
+                            <CircularProgress />
+                        ) : workloadError ? (
+                            <Alert severity="error">{workloadError}</Alert>
+                        ) : (
+                            <InstructorWorkloadSummaryTable workloads={instructorWorkloads} />
+                        )}
+
+                        {/* Existing Filters and Instructor Dashboard Table */}
                         <Box sx={{ display: 'flex', gap: 2, mb: 2, alignItems: 'center' }}>
                             <FormControl size="small" sx={{ minWidth: 200 }}>
                                 <InputLabel id="instructor-filter-label">Filter by Instructor</InputLabel>
@@ -430,9 +498,21 @@ const CourseAdminPortal = () => {
                 });
 
                 console.log(`[renderSelectedView: pending] State: isLoading=${isLoadingPending}, error=${pendingError}, ALL_COURSES_LEN=${pendingCourses.length}, FILTERED_COURSES_LEN=${filteredPendingCourses.length}`);
+                console.log(`[renderSelectedView: pending] Workload State: isLoading=${isLoadingWorkload}, error=${workloadError}, DATA_LEN=${instructorWorkloads.length}`);
 
                 return (
                     <>
+                        {/* Render Workload Summary Table First */}
+                        {isLoadingWorkload ? (
+                            <CircularProgress />
+                        ) : workloadError ? (
+                            <Alert severity="error" sx={{ mb: 2 }}>{`Workload Summary Error: ${workloadError}`}</Alert>
+                        ) : (
+                            <InstructorWorkloadSummaryTable workloads={instructorWorkloads} />
+                        )}
+
+                        <Typography variant="h6" sx={{ mt: 3, mb: 1 }}>Pending Course Requests</Typography> {/* Add title for clarity */}
+
                         {/* Filter UI */}
                         <Box sx={{ display: 'flex', gap: 2, mb: 2, alignItems: 'center' }}>
                             <TextField 
@@ -582,6 +662,22 @@ const CourseAdminPortal = () => {
 
     return (
         <Box sx={{ display: 'flex' }}>
+            {/* --- AppBar --- */}
+            <AppBar
+                position="fixed"
+                sx={{ zIndex: (theme) => theme.zIndex.drawer + 1 }}
+            >
+                <Toolbar>
+                    <Typography variant="h6" noWrap component="div" sx={{ flexGrow: 1, textAlign: 'center' }}>
+                        Course Admin Portal
+                    </Typography>
+                    <Typography variant="body1" noWrap sx={{ mr: 2 }}>
+                        Welcome {user?.FirstName || 'Admin User'}!
+                    </Typography>
+                </Toolbar>
+            </AppBar>
+
+            {/* --- Drawer --- */}
             <Drawer
                 variant="permanent"
                 sx={{
@@ -590,19 +686,34 @@ const CourseAdminPortal = () => {
                     '& .MuiDrawer-paper': {
                         width: drawerWidth,
                         boxSizing: 'border-box',
+                        // mt: 8, // Remove offset handled by Toolbar
+                        // height: 'calc(100% - 64px)' // Remove if not needed
                     },
                 }}
             >
-                <Box sx={{ overflow: 'auto', mt: 8 }}> {/* Adjust mt if header height changes */}
-                    <List>
+                {/* Toolbar spacer */}
+                 <Toolbar />
+                 <Box sx={{ overflow: 'auto' }}>
+                     <List>
                         {/* Dashboard Item */}
                         <ListItem 
                             component="div" 
                             selected={selectedView === 'dashboard'}
                             onClick={() => setSelectedView('dashboard')}
-                            sx={{ cursor: 'pointer' }}
+                            sx={{ 
+                                cursor: 'pointer', 
+                                py: 1.5, 
+                                backgroundColor: selectedView === 'dashboard' ? 'primary.light' : 'transparent',
+                                color: selectedView === 'dashboard' ? 'primary.contrastText' : 'inherit',
+                                '& .MuiListItemIcon-root': {
+                                    color: selectedView === 'dashboard' ? 'primary.contrastText' : 'inherit',
+                                },
+                                '&:hover': {
+                                    backgroundColor: selectedView === 'dashboard' ? 'primary.main' : 'action.hover',
+                                }
+                            }}
                         >
-                            <ListItemIcon>
+                            <ListItemIcon sx={{ color: 'inherit' }}>
                                 <DashboardIcon />
                             </ListItemIcon>
                             <ListItemText primary="Dashboard" />
@@ -613,9 +724,20 @@ const CourseAdminPortal = () => {
                             component="div" 
                             selected={selectedView === 'instructors'}
                             onClick={() => setSelectedView('instructors')}
-                            sx={{ cursor: 'pointer' }}
+                            sx={{ 
+                                cursor: 'pointer', 
+                                py: 1.5, 
+                                backgroundColor: selectedView === 'instructors' ? 'primary.light' : 'transparent',
+                                color: selectedView === 'instructors' ? 'primary.contrastText' : 'inherit',
+                                '& .MuiListItemIcon-root': {
+                                    color: selectedView === 'instructors' ? 'primary.contrastText' : 'inherit',
+                                },
+                                '&:hover': {
+                                    backgroundColor: selectedView === 'instructors' ? 'primary.main' : 'action.hover',
+                                }
+                            }}
                         >
-                            <ListItemIcon>
+                            <ListItemIcon sx={{ color: 'inherit' }}>
                                 <PeopleIcon />
                             </ListItemIcon>
                             <ListItemText primary="Instructor Dashboard" />
@@ -626,9 +748,20 @@ const CourseAdminPortal = () => {
                             component="div" 
                             selected={selectedView === 'pending'}
                             onClick={() => setSelectedView('pending')}
-                            sx={{ cursor: 'pointer' }}
+                            sx={{ 
+                                cursor: 'pointer', 
+                                py: 1.5, 
+                                backgroundColor: selectedView === 'pending' ? 'primary.light' : 'transparent',
+                                color: selectedView === 'pending' ? 'primary.contrastText' : 'inherit',
+                                '& .MuiListItemIcon-root': {
+                                    color: selectedView === 'pending' ? 'primary.contrastText' : 'inherit',
+                                },
+                                '&:hover': {
+                                    backgroundColor: selectedView === 'pending' ? 'primary.main' : 'action.hover',
+                                }
+                            }}
                         >
-                            <ListItemIcon>
+                            <ListItemIcon sx={{ color: 'inherit' }}>
                                 <PendingActionsIcon />
                             </ListItemIcon>
                             <ListItemText primary="Pending Courses" />
@@ -639,9 +772,20 @@ const CourseAdminPortal = () => {
                             component="div" 
                             selected={selectedView === 'scheduled'}
                             onClick={() => setSelectedView('scheduled')}
-                            sx={{ cursor: 'pointer' }}
+                            sx={{ 
+                                cursor: 'pointer', 
+                                py: 1.5, 
+                                backgroundColor: selectedView === 'scheduled' ? 'primary.light' : 'transparent',
+                                color: selectedView === 'scheduled' ? 'primary.contrastText' : 'inherit',
+                                '& .MuiListItemIcon-root': {
+                                    color: selectedView === 'scheduled' ? 'primary.contrastText' : 'inherit',
+                                },
+                                '&:hover': {
+                                    backgroundColor: selectedView === 'scheduled' ? 'primary.main' : 'action.hover',
+                                }
+                            }}
                         >
-                            <ListItemIcon>
+                            <ListItemIcon sx={{ color: 'inherit' }}>
                                 <EventAvailableIcon />
                             </ListItemIcon>
                             <ListItemText primary="Scheduled Courses" />
@@ -652,9 +796,20 @@ const CourseAdminPortal = () => {
                             component="div" 
                             selected={selectedView === 'completed'}
                             onClick={() => setSelectedView('completed')}
-                            sx={{ cursor: 'pointer' }}
+                            sx={{ 
+                                cursor: 'pointer', 
+                                py: 1.5, 
+                                backgroundColor: selectedView === 'completed' ? 'primary.light' : 'transparent',
+                                color: selectedView === 'completed' ? 'primary.contrastText' : 'inherit',
+                                '& .MuiListItemIcon-root': {
+                                    color: selectedView === 'completed' ? 'primary.contrastText' : 'inherit',
+                                },
+                                '&:hover': {
+                                    backgroundColor: selectedView === 'completed' ? 'primary.main' : 'action.hover',
+                                }
+                            }}
                         >
-                            <ListItemIcon>
+                            <ListItemIcon sx={{ color: 'inherit' }}>
                                 <CompletedIcon />
                             </ListItemIcon>
                             <ListItemText primary="Completed Courses" />
@@ -666,24 +821,25 @@ const CourseAdminPortal = () => {
                         <ListItem 
                             component="div" 
                             onClick={handleLogout}
-                            sx={{ cursor: 'pointer' }}
+                            sx={{ 
+                                cursor: 'pointer', 
+                                py: 1.5, 
+                                '&:hover': { backgroundColor: 'action.hover'} 
+                            }}
                         >
                             <ListItemIcon>
                                 <LogoutIcon />
                             </ListItemIcon>
                             <ListItemText primary="Logout" />
                         </ListItem>
-                    </List>
-                </Box>
+                     </List>
+                 </Box>
             </Drawer>
-
-            <Box component="main" sx={{ flexGrow: 1, p: 3, mt: 8 }}> {/* Adjust mt to clear potential app bar */}
+            {/* --- Main Content --- */}
+            <Box component="main" sx={{ flexGrow: 1, p: 3 }}> 
+                {/* Toolbar spacer */}
+                <Toolbar />
                 <Container maxWidth="lg">
-                    <Typography variant="h4" gutterBottom>
-                        Welcome, {user?.FirstName || 'Admin User'} {/* Use optional chaining */}
-                    </Typography>
-                    
-                    {/* Render the selected view based on state */}
                     {renderSelectedView()}
                 </Container>
             </Box>

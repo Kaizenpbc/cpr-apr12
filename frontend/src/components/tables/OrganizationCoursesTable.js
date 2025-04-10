@@ -11,9 +11,13 @@ import {
     Box,
     Typography,
     Tooltip,
-    TableSortLabel
+    TableSortLabel,
+    Chip,
+    IconButton
 } from '@mui/material';
 import { visuallyHidden } from '@mui/utils';
+import UploadFileIcon from '@mui/icons-material/UploadFile';
+import VisibilityIcon from '@mui/icons-material/Visibility';
 
 // Helper function to format date string (optional, can format directly)
 const formatDate = (dateString) => {
@@ -66,12 +70,13 @@ const OrganizationCoursesTable = ({ courses, onUploadStudentsClick, onViewStuden
                             </TableSortLabel>
                         </TableCell>
                         <TableCell>Course Number</TableCell>
-                        <TableCell>Organization</TableCell>
-                        <TableCell>Location</TableCell>
+                        <TableCell sx={{ fontWeight: 'bold' }}>Organization</TableCell>
+                        <TableCell sx={{ fontWeight: 'bold' }}>Location</TableCell>
+                        <TableCell sx={{ fontWeight: 'bold' }}>Course Type</TableCell>
                         <TableCell>Students Registered</TableCell>
                         <TableCell>Students Attendance</TableCell>
                         <TableCell>Notes</TableCell>
-                        <TableCell>Status</TableCell>
+                        <TableCell sx={{ fontWeight: 'bold' }}>Status</TableCell>
                         <TableCell>Instructor</TableCell>
                         <TableCell align="center">Actions</TableCell>
                     </TableRow>
@@ -88,33 +93,39 @@ const OrganizationCoursesTable = ({ courses, onUploadStudentsClick, onViewStuden
                             <TableCell>{course.coursenumber || '-'}</TableCell>
                             <TableCell>{course.organizationname || '-'}</TableCell>
                             <TableCell>{course.location || '-'}</TableCell>
+                            <TableCell>{course.coursetypename || '-'}</TableCell>
                             <TableCell align="center">{course.studentsregistered ?? '-'}</TableCell>
                             <TableCell align="center">{course.studentsattendance ?? '-'}</TableCell>
                             <TableCell>{course.notes || '-'}</TableCell>
-                            <TableCell>{course.status || '-'}</TableCell>
+                            <TableCell>
+                                <Chip 
+                                    label={course.status || 'Unknown'} 
+                                    color={course.status === 'Pending' ? 'warning' : course.status === 'Completed' ? 'success' : 'default'}
+                                />
+                            </TableCell>
                             <TableCell>{course.instructorname || (course.status === 'Pending' ? 'Not Assigned' : '-')}</TableCell>
                             <TableCell align="center">
-                                <Box sx={{ display: 'flex', gap: 1, justifyContent: 'center' }}>
+                                <Box sx={{ display: 'flex', gap: 0.5, justifyContent: 'center' }}>
                                     <Tooltip title="Upload Student List">
-                                        <Button 
-                                            variant="outlined" 
+                                        <IconButton 
+                                            color="primary"
                                             size="small"
                                             onClick={() => onUploadStudentsClick(course.courseid)}
                                         >
-                                            Upload
-                                        </Button>
+                                            <UploadFileIcon fontSize="small"/>
+                                        </IconButton>
                                     </Tooltip>
                                     <Tooltip title="View Registered Students">
-                                        <Button 
-                                            variant="outlined" 
+                                        <IconButton 
+                                            color="info"
                                             size="small"
                                             onClick={() => {
                                                 console.log(`[OrgCoursesTable] View Students button clicked for courseId: ${course.courseid}`);
                                                 onViewStudentsClick(course.courseid);
                                             }}
                                         >
-                                            View Students
-                                        </Button>
+                                            <VisibilityIcon fontSize="small"/>
+                                        </IconButton>
                                     </Tooltip>
                                 </Box>
                             </TableCell>

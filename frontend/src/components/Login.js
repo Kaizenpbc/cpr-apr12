@@ -98,9 +98,16 @@ const Login = () => {
                         alignItems: 'center',
                     }}
                 >
-                    <Avatar sx={{ m: 1, bgcolor: 'secondary.main' }}>
-                        <LockOutlinedIcon />
-                    </Avatar>
+                    <Box 
+                        component="img"
+                        sx={{
+                            m: 1, 
+                            height: 64, // Adjust height as needed
+                            // maxWidth: '80%' // Optional: constrain width
+                        }}
+                        alt="GTA CPR Logo"
+                        src="https://www.gtacpr.com/wp-content/uploads/2023/02/GTACPR_Logo_GetCertified_Tagline-Black.svg"
+                    />
                     <Typography component="h1" variant="h5">
                         GTA CPR Course Management
                     </Typography>

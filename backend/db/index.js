@@ -9,6 +9,8 @@ const pool = new Pool({
     database: process.env.DB_DATABASE
 });
 
+console.log('[DB] PostgreSQL Pool created.');
+
 module.exports = {
     query: (text, params) => pool.query(text, params),
     pool

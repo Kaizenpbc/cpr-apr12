@@ -650,7 +650,21 @@ const InstructorPortal = () => {
                              </TableRow>
                         ) : (
                             combinedItems.map((item) => (
-                                <TableRow key={item.key}>
+                                <TableRow 
+                                    key={item.key}
+                                    sx={{
+                                        // Apply conditional background color
+                                        backgroundColor: item.type === 'class' ? '#e3f2fd' // Light blue for classes (like calendar)
+                                                     : item.type === 'availability' ? '#fffde7' // Light yellow for availability (like calendar)
+                                                     : undefined,
+                                        // Adjust hover style slightly if needed
+                                        '&:hover': {
+                                            backgroundColor: item.type === 'class' ? '#bbdefb' 
+                                                         : item.type === 'availability' ? '#fff9c4' 
+                                                         : 'action.hover'
+                                        }
+                                    }}
+                                >
                                     <TableCell>{item.displayDate}</TableCell>
                                     {item.type === 'class' ? (
                                         <> 
