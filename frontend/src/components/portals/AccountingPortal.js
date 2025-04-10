@@ -15,7 +15,9 @@ import {
     CircularProgress,
     Alert,
     Snackbar,
-    Button // Added Button back for potential use
+    Button,
+    AppBar,
+    Toolbar
 } from '@mui/material';
 import {
     ReceiptLong as BillingIcon, 
@@ -54,6 +56,11 @@ const AccountingPortal = () => {
     // Add state for Record Payment Dialog
     const [showRecordPaymentDialog, setShowRecordPaymentDialog] = useState(false);
     const [selectedInvoiceForPayment, setSelectedInvoiceForPayment] = useState(null); // Store the whole invoice object
+
+    // Add showSnackbar helper
+    const showSnackbar = useCallback((message, severity = 'success') => {
+        setSnackbar({ open: true, message, severity });
+    }, []);
 
     // Handler to load billing queue
     const loadBillingQueue = useCallback(async () => {
@@ -109,8 +116,16 @@ const AccountingPortal = () => {
     }, [selectedView, loadBillingQueue, loadInvoices]);
 
     const handleLogout = () => {
-        logout();
-        navigate('/');
+        // Construct and show message
+        const firstName = user?.FirstName || 'Accounting User';
+        const logoutMessage = `Goodbye ${firstName}, Have a Great Day!`;
+        showSnackbar(logoutMessage, 'info'); 
+        
+        // Delay logout
+        setTimeout(() => {
+            logout();
+            navigate('/');
+        }, 1500); 
     };
 
     // --- Action Handlers ---
@@ -237,6 +252,22 @@ const AccountingPortal = () => {
 
     return (
         <Box sx={{ display: 'flex' }}>
+            {/* --- AppBar --- */}
+            <AppBar
+                position="fixed"
+                sx={{ zIndex: (theme) => theme.zIndex.drawer + 1 }}
+            >
+                <Toolbar>
+                    <Typography variant="h6" noWrap component="div" sx={{ flexGrow: 1, textAlign: 'center' }}>
+                        Accounting Portal
+                    </Typography>
+                    <Typography variant="body1" noWrap sx={{ mr: 2 }}>
+                         Welcome {user?.FirstName || 'Accounting User'}!
+                    </Typography>
+                </Toolbar>
+            </AppBar>
+
+             {/* --- Drawer --- */}
             <Drawer
                 variant="permanent"
                 sx={{
@@ -245,36 +276,65 @@ const AccountingPortal = () => {
                     '& .MuiDrawer-paper': {
                         width: drawerWidth,
                         boxSizing: 'border-box',
-                        mt: 8,
-                        height: 'calc(100% - 64px)'
                     },
                 }}
             >
+                 {/* Toolbar spacer */}
+                 <Toolbar />
                  <Box sx={{ overflow: 'auto' }}>
                      <List>
+                        {/* Billing Ready Item - Apply Styles */}
                         <ListItem 
                             component="div"
                             selected={selectedView === 'billingReady'}
                             onClick={() => setSelectedView('billingReady')}
-                            sx={{ cursor: 'pointer' }}
+                            sx={{ 
+                                cursor: 'pointer', 
+                                py: 1.5, 
+                                backgroundColor: selectedView === 'billingReady' ? 'primary.light' : 'transparent',
+                                color: selectedView === 'billingReady' ? 'primary.contrastText' : 'inherit',
+                                '& .MuiListItemIcon-root': {
+                                    color: selectedView === 'billingReady' ? 'primary.contrastText' : 'inherit',
+                                },
+                                '&:hover': {
+                                    backgroundColor: selectedView === 'billingReady' ? 'primary.main' : 'action.hover',
+                                }
+                            }}
                         >
-                            <ListItemIcon><BillingIcon /></ListItemIcon>
+                            <ListItemIcon sx={{ color: 'inherit' }}><BillingIcon /></ListItemIcon>
                             <ListItemText primary="Ready for Billing" />
                         </ListItem>
+                        {/* Accounts Receivable Item - Apply Styles */}
                         <ListItem 
                             component="div"
                             selected={selectedView === 'receivables'}
                             onClick={() => setSelectedView('receivables')}
-                            sx={{ cursor: 'pointer' }}
+                            sx={{ 
+                                cursor: 'pointer', 
+                                py: 1.5, 
+                                backgroundColor: selectedView === 'receivables' ? 'primary.light' : 'transparent',
+                                color: selectedView === 'receivables' ? 'primary.contrastText' : 'inherit',
+                                '& .MuiListItemIcon-root': {
+                                    color: selectedView === 'receivables' ? 'primary.contrastText' : 'inherit',
+                                },
+                                '&:hover': {
+                                    backgroundColor: selectedView === 'receivables' ? 'primary.main' : 'action.hover',
+                                }
+                            }}
                         >
-                            <ListItemIcon><ReceivablesIcon /></ListItemIcon>
+                            <ListItemIcon sx={{ color: 'inherit' }}><ReceivablesIcon /></ListItemIcon>
                             <ListItemText primary="Accounts Receivable" />
                         </ListItem>
                         <Divider sx={{ my: 1 }} />
+                         {/* Logout Item - Apply Styles */}
                         <ListItem 
                             component="div"
                             onClick={handleLogout}
-                            sx={{ cursor: 'pointer' }}
+                            sx={{ 
+                                cursor: 'pointer', 
+                                py: 1.5, 
+                                '&:hover': { backgroundColor: 'action.hover'} 
+                            }}
                         >
                             <ListItemIcon><LogoutIcon /></ListItemIcon>
                             <ListItemText primary="Logout" />
@@ -282,11 +342,12 @@ const AccountingPortal = () => {
                      </List>
                  </Box>
             </Drawer>
-            <Box component="main" sx={{ flexGrow: 1, p: 3, mt: 8 }}>
+             {/* --- Main Content --- */}
+            <Box component="main" sx={{ flexGrow: 1, p: 3 }}>
+                 {/* Toolbar spacer */}
+                <Toolbar />
                 <Container maxWidth="lg">
-                    <Typography variant="h4" gutterBottom>
-                        Welcome, {user?.FirstName || 'Accounting User'}
-                    </Typography>
+                     {/* Remove original welcome */}
                     {renderSelectedView()}
                 </Container>
             </Box>
@@ -323,11 +384,12 @@ const AccountingPortal = () => {
                 />
             )}
 
-            {/* Snackbar for potential future messages */}
+            {/* Snackbar - Update anchorOrigin */}
             <Snackbar
                 open={snackbar.open}
                 autoHideDuration={6000}
                 onClose={() => setSnackbar({ ...snackbar, open: false })}
+                anchorOrigin={{ vertical: 'top', horizontal: 'center' }} // Set position
             >
                 <Alert onClose={() => setSnackbar({ ...snackbar, open: false })} severity={snackbar.severity} variant="filled" sx={{ width: '100%' }}>
                     {snackbar.message}

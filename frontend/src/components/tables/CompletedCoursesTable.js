@@ -11,9 +11,12 @@ import {
     Box,
     Typography,
     Tooltip,
-    TableSortLabel
+    TableSortLabel,
+    IconButton
 } from '@mui/material';
 import { visuallyHidden } from '@mui/utils';
+import VisibilityIcon from '@mui/icons-material/Visibility';
+import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
 
 const formatDate = (dateString) => {
     if (!dateString) return '-';
@@ -43,6 +46,7 @@ const CompletedCoursesTable = ({ courses, onViewStudentsClick, onBillClick, sort
                         <TableCell
                             key="date"
                             sortDirection={sortBy === 'date' ? sortOrder : false}
+                            sx={{ fontWeight: 'bold' }}
                         >
                             <TableSortLabel
                                 active={sortBy === 'date'}
@@ -61,6 +65,7 @@ const CompletedCoursesTable = ({ courses, onViewStudentsClick, onBillClick, sort
                         <TableCell
                             key="organization"
                             sortDirection={sortBy === 'organization' ? sortOrder : false}
+                            sx={{ fontWeight: 'bold' }}
                         >
                             <TableSortLabel
                                 active={sortBy === 'organization'}
@@ -75,14 +80,15 @@ const CompletedCoursesTable = ({ courses, onViewStudentsClick, onBillClick, sort
                                 ) : null}
                             </TableSortLabel>
                         </TableCell>
-                        <TableCell>Location</TableCell>
+                        <TableCell sx={{ fontWeight: 'bold' }}>Location</TableCell>
                         <TableCell sx={{ fontWeight: 'bold' }}>Students Registered</TableCell>
                         <TableCell sx={{ fontWeight: 'bold' }}>Students Attendance</TableCell>
-                        <TableCell>Notes</TableCell>
-                        <TableCell>Status</TableCell>
+                        <TableCell sx={{ fontWeight: 'bold' }}>Notes</TableCell>
+                        <TableCell sx={{ fontWeight: 'bold' }}>Status</TableCell>
                         <TableCell
                             key="instructor"
                             sortDirection={sortBy === 'instructor' ? sortOrder : false}
+                            sx={{ fontWeight: 'bold' }}
                         >
                             <TableSortLabel
                                 active={sortBy === 'instructor'}
@@ -114,26 +120,24 @@ const CompletedCoursesTable = ({ courses, onViewStudentsClick, onBillClick, sort
                             <TableCell>{course.status || '-'}</TableCell>
                             <TableCell>{course.instructorname || '-'}</TableCell>
                             <TableCell align="center">
-                                <Box sx={{ display: 'flex', gap: 1, justifyContent: 'center' }}>
-                                    <Tooltip title="View Registered Students">
-                                        <Button 
-                                            variant="outlined" 
+                                <Box sx={{ display: 'flex', gap: 0.5, justifyContent: 'center' }}>
+                                    <Tooltip title="View Students">
+                                        <IconButton 
+                                            color="info"
                                             size="small"
                                             onClick={() => onViewStudentsClick(course.courseid)}
                                         >
-                                            View Students
-                                        </Button>
+                                            <VisibilityIcon fontSize="small" />
+                                        </IconButton>
                                     </Tooltip>
-                                     <Tooltip title="Generate Invoice">
-                                        <Button 
-                                            variant="contained" 
+                                    <Tooltip title="Mark Ready for Billing">
+                                        <IconButton 
+                                            color="success"
                                             size="small"
-                                            color="secondary"
                                             onClick={() => onBillClick(course.courseid)}
-                                            disabled={course.status !== 'Completed'} 
                                         >
-                                            Bill
-                                        </Button>
+                                            <ReceiptLongIcon fontSize="small" />
+                                        </IconButton>
                                     </Tooltip>
                                 </Box>
                             </TableCell>

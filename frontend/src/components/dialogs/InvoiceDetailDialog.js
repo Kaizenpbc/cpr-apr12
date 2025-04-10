@@ -79,12 +79,13 @@ const InvoiceDetailDialog = ({ open, onClose, invoiceId, onEmailClick }) => {
                 {error && <Alert severity="error">{error}</Alert>}
                 {invoice && !isLoading && (
                     <Box sx={{ p: 1 }}>
+                        {/* Container for Header Info */}
                         <Grid container spacing={2}>
-                            {/* Header Info */}
-                            <Grid item xs={6} md={3}><Typography variant="body2"><strong>Invoice #:</strong> {invoice.invoicenumber}</Typography></Grid>
-                            <Grid item xs={6} md={3}><Typography variant="body2"><strong>Invoice Date:</strong> {formatDate(invoice.invoicedate)}</Typography></Grid>
-                            <Grid item xs={6} md={3}><Typography variant="body2"><strong>Due Date:</strong> {formatDate(invoice.duedate)}</Typography></Grid>
-                            <Grid item xs={6} md={3}><Typography variant="body2"><strong>Status:</strong> {invoice.paymentstatus}</Typography></Grid>
+                            {/* Header Info - Remove 'item' prop */}
+                            <Grid xs={6} md={3}><Typography variant="body2"><strong>Invoice #:</strong> {invoice.invoicenumber}</Typography></Grid>
+                            <Grid xs={6} md={3}><Typography variant="body2"><strong>Invoice Date:</strong> {formatDate(invoice.invoicedate)}</Typography></Grid>
+                            <Grid xs={6} md={3}><Typography variant="body2"><strong>Due Date:</strong> {formatDate(invoice.duedate)}</Typography></Grid>
+                            <Grid xs={6} md={3}><Typography variant="body2"><strong>Status:</strong> {invoice.paymentstatus}</Typography></Grid>
                         </Grid>
                         <Divider sx={{ my: 2 }} />
                         {/* Organization Info */}
@@ -97,13 +98,15 @@ const InvoiceDetailDialog = ({ open, onClose, invoiceId, onEmailClick }) => {
                         <Divider sx={{ my: 2 }} />
                         {/* Course & Billing Details */}
                         <Typography variant="subtitle1" gutterBottom>Service Details:</Typography>
+                         {/* Container for Service Details */}
                         <Grid container spacing={1}>
-                            <Grid item xs={12} sm={6}><Typography variant="body2"><strong>Course:</strong> {invoice.coursetypename} ({invoice.coursenumber})</Typography></Grid>
-                            <Grid item xs={12} sm={6}><Typography variant="body2"><strong>Date Completed:</strong> {formatDate(invoice.datecompleted)}</Typography></Grid>
-                            <Grid item xs={12} sm={6}><Typography variant="body2"><strong>Location:</strong> {invoice.location}</Typography></Grid>
-                            <Grid item xs={12} sm={6}><Typography variant="body2"><strong>Students Attended:</strong> {invoice.studentsattendance}</Typography></Grid>
-                            <Grid item xs={12} sm={6}><Typography variant="body2"><strong>Rate per Student:</strong> {formatCurrency(invoice.rateperstudent)}</Typography></Grid>
-                            <Grid item xs={12} sm={6}><Typography variant="body2" sx={{fontWeight: 'bold'}}><strong>Total Amount:</strong> {formatCurrency(invoice.amount)}</Typography></Grid>
+                            {/* Service Details - Remove 'item' prop */}
+                            <Grid xs={12} sm={6}><Typography variant="body2"><strong>Course:</strong> {invoice.coursetypename} ({invoice.coursenumber})</Typography></Grid>
+                            <Grid xs={12} sm={6}><Typography variant="body2"><strong>Date Completed:</strong> {formatDate(invoice.datecompleted)}</Typography></Grid>
+                            <Grid xs={12} sm={6}><Typography variant="body2"><strong>Location:</strong> {invoice.location}</Typography></Grid>
+                            <Grid xs={12} sm={6}><Typography variant="body2"><strong>Students Attended:</strong> {invoice.studentsattendance}</Typography></Grid>
+                            <Grid xs={12} sm={6}><Typography variant="body2"><strong>Rate per Student:</strong> {formatCurrency(invoice.rateperstudent)}</Typography></Grid>
+                            <Grid xs={12} sm={6}><Typography variant="body2" sx={{fontWeight: 'bold'}}><strong>Total Amount:</strong> {formatCurrency(invoice.amount)}</Typography></Grid>
                         </Grid>
                     </Box>
                 )}

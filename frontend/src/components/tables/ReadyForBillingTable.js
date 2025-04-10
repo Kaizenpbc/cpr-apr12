@@ -10,8 +10,11 @@ import {
     Button,
     Box,
     Typography,
-    Tooltip
+    Tooltip,
+    IconButton
 } from '@mui/material';
+import VisibilityIcon from '@mui/icons-material/Visibility';
+import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
 
 const formatDate = (dateString) => {
     if (!dateString) return '-';
@@ -33,18 +36,18 @@ const ReadyForBillingTable = ({ courses, onCreateInvoiceClick, onReviewClick }) 
             <Table stickyHeader aria-label="ready for billing table">
                 <TableHead>
                     <TableRow>
-                        <TableCell>System Date</TableCell>
-                        <TableCell>Date Completed</TableCell>
-                        <TableCell>Course Number</TableCell>
-                        <TableCell>Organization</TableCell>
-                        <TableCell>Location</TableCell>
-                        <TableCell>Course Type</TableCell>
-                        <TableCell>Students Registered</TableCell>
-                        <TableCell>Students Attendance</TableCell>
-                        <TableCell>Rate</TableCell>
-                        <TableCell>Total Cost</TableCell>
-                        <TableCell>Status</TableCell>
-                        <TableCell align="center">Actions</TableCell>
+                        <TableCell sx={{ fontWeight: 'bold' }}>System Date</TableCell>
+                        <TableCell sx={{ fontWeight: 'bold' }}>Date Completed</TableCell>
+                        <TableCell sx={{ fontWeight: 'bold' }}>Course Number</TableCell>
+                        <TableCell sx={{ fontWeight: 'bold' }}>Organization</TableCell>
+                        <TableCell sx={{ fontWeight: 'bold' }}>Location</TableCell>
+                        <TableCell sx={{ fontWeight: 'bold' }}>Course Type</TableCell>
+                        <TableCell sx={{ fontWeight: 'bold' }}>Students Registered</TableCell>
+                        <TableCell sx={{ fontWeight: 'bold' }}>Students Attendance</TableCell>
+                        <TableCell sx={{ fontWeight: 'bold' }}>Rate</TableCell>
+                        <TableCell sx={{ fontWeight: 'bold' }}>Total Cost</TableCell>
+                        <TableCell sx={{ fontWeight: 'bold' }}>Status</TableCell>
+                        <TableCell align="center" sx={{ fontWeight: 'bold' }}>Actions</TableCell>
                     </TableRow>
                 </TableHead>
                 <TableBody>
@@ -64,24 +67,24 @@ const ReadyForBillingTable = ({ courses, onCreateInvoiceClick, onReviewClick }) 
                             <TableCell align="center">{'-'} {/* Cost Placeholder */}</TableCell>
                             <TableCell>{course.status || '-'}</TableCell>
                             <TableCell align="center">
-                                <Box sx={{ display: 'flex', gap: 1, justifyContent: 'center' }}>
-                                     <Tooltip title="Review Course Details & Student List">
-                                        <Button 
-                                            variant="outlined" 
+                                <Box sx={{ display: 'flex', gap: 0.5, justifyContent: 'center' }}>
+                                     <Tooltip title="Review Course/Students">
+                                        <IconButton 
+                                            color="info"
                                             size="small"
                                             onClick={() => onReviewClick(course.courseid)}
                                         >
-                                            Review
-                                        </Button>
+                                            <VisibilityIcon fontSize="small" />
+                                        </IconButton>
                                     </Tooltip>
-                                    <Tooltip title="Create Invoice for this Course">
-                                        <Button 
-                                            variant="contained" 
+                                     <Tooltip title="Create Invoice">
+                                        <IconButton 
+                                            color="success"
                                             size="small"
-                                            onClick={() => onCreateInvoiceClick(course)} // Pass full course
+                                            onClick={() => onCreateInvoiceClick(course)}
                                         >
-                                            Create Invoice
-                                        </Button>
+                                            <ReceiptLongIcon fontSize="small" />
+                                        </IconButton>
                                     </Tooltip>
                                 </Box>
                             </TableCell>

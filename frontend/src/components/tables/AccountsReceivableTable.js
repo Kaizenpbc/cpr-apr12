@@ -19,6 +19,12 @@ import {
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown'; // Expand icon
 import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp'; // Collapse icon
 import * as api from '../../services/api'; // Import API service
+import { visuallyHidden } from '@mui/utils';
+// Add necessary icons
+import VisibilityIcon from '@mui/icons-material/Visibility';
+import ReceiptLongIcon from '@mui/icons-material/ReceiptLong'; // Used for Billing Queue
+import PaymentIcon from '@mui/icons-material/Payment'; // For Record Payment
+import EmailIcon from '@mui/icons-material/Email'; // For Email Invoice
 
 const formatDate = (dateString) => {
     if (!dateString) return '-';
@@ -123,23 +129,29 @@ const AccountsReceivableTable = ({
             <Table stickyHeader aria-label="accounts receivable table">
                 <TableHead>
                     <TableRow>
-                        <TableCell sx={{ width: '10px' }} /> {/* Empty cell for expand button */}
-                        <TableCell>Invoice #</TableCell>
-                        <TableCell>Invoice Date</TableCell>
-                        <TableCell>Due Date</TableCell>
-                        <TableCell>Organization</TableCell>
-                        <TableCell>Course #</TableCell>
-                        <TableCell align="right">Amount</TableCell>
-                        <TableCell align="center">Payment Status</TableCell>
-                        <TableCell>Aging</TableCell>
-                        <TableCell>Email Sent</TableCell>
-                        <TableCell align="center">Actions</TableCell>
+                        <TableCell sx={{ width: '10px', fontWeight: 'bold' }} /> {/* Empty cell for expand button */}
+                        <TableCell sx={{ fontWeight: 'bold' }}>Invoice #</TableCell>
+                        <TableCell sx={{ fontWeight: 'bold' }}>Invoice Date</TableCell>
+                        <TableCell sx={{ fontWeight: 'bold' }}>Due Date</TableCell>
+                        <TableCell sx={{ fontWeight: 'bold' }}>Organization</TableCell>
+                        <TableCell sx={{ fontWeight: 'bold' }}>Course #</TableCell>
+                        <TableCell align="right" sx={{ fontWeight: 'bold' }}>Amount</TableCell>
+                        <TableCell align="center" sx={{ fontWeight: 'bold' }}>Payment Status</TableCell>
+                        <TableCell sx={{ fontWeight: 'bold' }}>Aging</TableCell>
+                        <TableCell sx={{ fontWeight: 'bold' }}>Email Sent</TableCell>
+                        <TableCell align="center" sx={{ fontWeight: 'bold' }}>Actions</TableCell>
                     </TableRow>
                 </TableHead>
                 <TableBody>
-                    {invoices.map((invoice) => (
-                        <React.Fragment key={invoice.invoiceid}> {/* Use Fragment for expansion */}
-                            <TableRow hover sx={{ '& > *': { borderBottom: 'unset' } }}> {/* Remove bottom border for expandable row */}
+                    {invoices.map((invoice, index) => (
+                        <React.Fragment key={invoice.invoiceid}>
+                            <TableRow 
+                                hover 
+                                sx={{ 
+                                    '& > *': { borderBottom: 'unset' },
+                                    backgroundColor: index % 2 !== 0 ? '#f9f9f9' : 'inherit', 
+                                }}
+                            >
                                 <TableCell>
                                     {/* Expand/Collapse Button */}
                                     <IconButton
@@ -166,37 +178,44 @@ const AccountsReceivableTable = ({
                                 <TableCell>{invoice.agingBucket || '-'}</TableCell>
                                 <TableCell>{invoice.emailsentat ? formatDate(invoice.emailsentat) : '-'}</TableCell>
                                 <TableCell align="center">
-                                    <Box sx={{ display: 'flex', gap: 1, justifyContent: 'center' }}>
+                                    <Box sx={{ display: 'flex', gap: 0.5, justifyContent: 'center' }}> {/* Reduced gap */}
+                                        {/* Record Payment Button */}
                                         <Tooltip title="Record Payment Received">
-                                            <Button 
-                                                variant="outlined" 
-                                                size="small"
-                                                color="success"
-                                                onClick={() => onRecordPaymentClick(invoice)}
-                                                disabled={invoice.paymentstatus?.toLowerCase() === 'paid'}
-                                            >
-                                                Record Payment
-                                            </Button>
+                                            {/* Wrap IconButton in span for tooltip on disabled */}
+                                            <span>
+                                                <IconButton 
+                                                    color="success"
+                                                    size="small"
+                                                    onClick={() => onRecordPaymentClick(invoice)}
+                                                    disabled={invoice.paymentstatus?.toLowerCase() === 'paid'}
+                                                >
+                                                    <PaymentIcon fontSize="small" />
+                                                </IconButton>
+                                            </span>
                                         </Tooltip>
+                                        {/* Details Button */}
                                         <Tooltip title="View Course/Invoice Details">
-                                            <Button 
-                                                variant="outlined" 
+                                            <IconButton 
+                                                color="info"
                                                 size="small"
                                                 onClick={() => onViewDetailsClick(invoice.invoiceid)}
                                             >
-                                                Details
-                                            </Button>
+                                                <VisibilityIcon fontSize="small" />
+                                            </IconButton>
                                         </Tooltip>
+                                        {/* Email Button */}
                                          <Tooltip title={invoice.emailsentat ? "Resend Invoice Email" : "Email Invoice to Organization"}>
-                                            <Button 
-                                                variant={invoice.emailsentat ? "text" : "outlined"} 
-                                                size="small"
-                                                color="primary"
-                                                onClick={() => onEmailInvoiceClick(invoice.invoiceid)}
-                                                disabled={!invoice.contactemail} // Should disable if no email to send to
-                                            >
-                                                {invoice.emailsentat ? 'Resend' : 'Email'}
-                                            </Button>
+                                             {/* Wrap IconButton in span for tooltip on disabled */}
+                                             <span>
+                                                <IconButton 
+                                                    color="primary"
+                                                    size="small"
+                                                    onClick={() => onEmailInvoiceClick(invoice.invoiceid)}
+                                                    disabled={!invoice.contactemail} 
+                                                >
+                                                     <EmailIcon fontSize="small" />
+                                                </IconButton>
+                                             </span>
                                         </Tooltip>
                                     </Box>
                                 </TableCell>
