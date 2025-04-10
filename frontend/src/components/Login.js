@@ -10,9 +10,18 @@ import {
     Button,
     Paper,
     Alert,
-    Grid // Import Grid if needed for layout
+    Grid,
+    Avatar,
+    CssBaseline,
+    ThemeProvider,
+    createTheme
 } from '@mui/material';
+import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
 // Removed icon imports and portalOptions
+
+function Copyright(props) {
+    // ... copyright component ...
+}
 
 const Login = () => {
     const navigate = useNavigate();
@@ -78,62 +87,68 @@ const Login = () => {
     };
 
     return (
-        <Container maxWidth="xs"> {/* Changed maxWidth for a typical login form */}
-            <Paper elevation={3} sx={{ p: 4, mt: 8, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                <Typography variant="h4" component="h1" gutterBottom>
-                    CPR Course Management
-                </Typography>
-                <Typography variant="subtitle1" color="text.secondary" paragraph align="center">
-                    Please sign in
-                </Typography>
+        <ThemeProvider theme={createTheme()}>
+            <Container component="main" maxWidth="xs">
+                <CssBaseline />
+                <Box
+                    sx={{
+                        marginTop: 8,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                    }}
+                >
+                    <Avatar sx={{ m: 1, bgcolor: 'secondary.main' }}>
+                        <LockOutlinedIcon />
+                    </Avatar>
+                    <Typography component="h1" variant="h5">
+                        GTA CPR Course Management
+                    </Typography>
+                    <Box component="form" onSubmit={handleLogin} sx={{ mt: 1, width: '100%' }}>
+                        <TextField
+                            margin="normal"
+                            required
+                            fullWidth
+                            id="username"
+                            label="Username"
+                            name="username"
+                            autoComplete="username"
+                            autoFocus
+                            value={username}
+                            onChange={(e) => setUsername(e.target.value)}
+                        />
+                        <TextField
+                            margin="normal"
+                            required
+                            fullWidth
+                            name="password"
+                            label="Password"
+                            type="password"
+                            id="password"
+                            autoComplete="current-password"
+                            value={password}
+                            onChange={(e) => setPassword(e.target.value)}
+                        />
+                        {/* Optional: Add Remember Me checkbox if needed */}
+                        <Button
+                            type="submit"
+                            fullWidth
+                            variant="contained"
+                            sx={{ mt: 3, mb: 2 }}
+                        >
+                            Sign In
+                        </Button>
+                        {/* Optional: Add Forgot Password or Sign Up links if needed */}
+                    </Box>
 
-                {/* Removed Portal Selection Grid */}
-
-                {/* Login Form - Always visible */}
-                <Box component="form" onSubmit={handleLogin} sx={{ mt: 1, width: '100%' }}>
-                    <TextField
-                        margin="normal"
-                        required
-                        fullWidth
-                        id="username"
-                        label="Username"
-                        name="username"
-                        autoComplete="username"
-                        autoFocus
-                        value={username}
-                        onChange={(e) => setUsername(e.target.value)}
-                    />
-                    <TextField
-                        margin="normal"
-                        required
-                        fullWidth
-                        name="password"
-                        label="Password"
-                        type="password"
-                        id="password"
-                        autoComplete="current-password"
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                    />
-                    {/* Optional: Add Remember Me checkbox if needed */}
-                    <Button
-                        type="submit"
-                        fullWidth
-                        variant="contained"
-                        sx={{ mt: 3, mb: 2 }}
-                    >
-                        Sign In
-                    </Button>
-                    {/* Optional: Add Forgot Password or Sign Up links if needed */}
+                    {error && (
+                        <Alert severity="error" sx={{ mt: 2, width: '100%' }}>
+                            {error}
+                        </Alert>
+                    )}
                 </Box>
-
-                {error && (
-                    <Alert severity="error" sx={{ mt: 2, width: '100%' }}>
-                        {error}
-                    </Alert>
-                )}
-            </Paper>
-        </Container>
+            </Container>
+        </ThemeProvider>
     );
 };
 

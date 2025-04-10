@@ -31,28 +31,27 @@ const InstructorArchiveTable = ({ courses }) => {
             <Table stickyHeader aria-label="archived courses table">
                 <TableHead>
                     <TableRow>
-                        {/* Define Table Headers - similar to scheduled but maybe remove actions? */}
-                        <TableCell>Date Completed</TableCell> 
-                        <TableCell>Course Number</TableCell>
-                        <TableCell>Organization</TableCell>
-                        <TableCell>Location</TableCell>
-                        <TableCell>Course Type</TableCell>
-                        <TableCell>Registered</TableCell>
-                        <TableCell>Attendance</TableCell> {/* Placeholder */}
-                        <TableCell>Notes</TableCell>
-                        <TableCell>Status</TableCell>
+                        {/* Apply bold styling to headers */}
+                        <TableCell sx={{ fontWeight: 'bold' }}>Date Completed</TableCell>
+                        <TableCell sx={{ fontWeight: 'bold' }}>Organization</TableCell>
+                        <TableCell sx={{ fontWeight: 'bold' }}>Course No</TableCell>
+                        <TableCell sx={{ fontWeight: 'bold' }}>Course Type</TableCell>
+                        <TableCell sx={{ fontWeight: 'bold' }}>Students Registered</TableCell>
+                        <TableCell sx={{ fontWeight: 'bold' }}>Students Attendance</TableCell>
+                        <TableCell sx={{ fontWeight: 'bold' }}>Notes</TableCell>
+                        <TableCell sx={{ fontWeight: 'bold' }}>Status</TableCell>
+                        {/* Add other headers as needed, ensure they match render logic */}
                     </TableRow>
                 </TableHead>
                 <TableBody>
                     {courses.map((course) => (
                         <TableRow key={course.courseid} hover sx={{ '&:last-child td, &:last-child th': { border: 0 } }}>
                             <TableCell>{formatDate(course.datescheduled)}</TableCell> {/* Use DateScheduled as completion date? */}
-                            <TableCell>{course.coursenumber || '-'}</TableCell>
                             <TableCell>{course.organizationname || '-'}</TableCell>
-                            <TableCell>{course.location || '-'}</TableCell>
+                            <TableCell>{course.coursenumber || '-'}</TableCell>
                             <TableCell>{course.coursetypename || '-'}</TableCell>
                             <TableCell align="center">{course.studentsregistered ?? '-'}</TableCell>
-                            <TableCell align="center">{'-'}</TableCell> {/* Placeholder */}
+                            <TableCell align="center">{course.studentsattendance ?? '-'}</TableCell>
                             <TableCell>{course.notes || '-'}</TableCell>
                             <TableCell>{course.status || '-'}</TableCell> 
                         </TableRow>

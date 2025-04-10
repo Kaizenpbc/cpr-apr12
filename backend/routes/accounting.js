@@ -143,18 +143,58 @@ router.post('/create-invoice/:courseId', authenticateToken, checkAccountingAcces
 router.get('/invoices', authenticateToken, checkAccountingAccess, async (req, res) => {
     console.log('[API GET /accounting/invoices] Request received');
     try {
+        // Fetch necessary fields, including DueDate and PaymentStatus
         const result = await pool.query(`
             SELECT 
                 i.InvoiceID, i.InvoiceNumber, i.InvoiceDate, i.DueDate, i.Amount, i.PaymentStatus, 
                 c.CourseNumber, 
-                o.OrganizationName
+                o.OrganizationName,
+                i.EmailSentAt 
             FROM Invoices i
             JOIN Courses c ON i.CourseID = c.CourseID
             JOIN Organizations o ON c.OrganizationID = o.OrganizationID
-            ORDER BY i.InvoiceDate DESC -- Show newest invoices first
+            ORDER BY i.InvoiceDate DESC 
         `);
         
-        res.json({ success: true, invoices: result.rows });
+        const invoices = result.rows;
+        const today = new Date();
+        today.setHours(0, 0, 0, 0); // Normalize today to the start of the day for consistent comparison
+
+        // Calculate aging bucket for each invoice
+        const invoicesWithAging = invoices.map(invoice => {
+            let agingBucket = 'Paid'; // Default for paid invoices
+            if (invoice.paymentstatus?.toLowerCase() !== 'paid') {
+                try {
+                    const dueDate = new Date(invoice.duedate);
+                    dueDate.setHours(0, 0, 0, 0); // Normalize due date
+                    
+                    if (dueDate >= today) {
+                        agingBucket = 'Current';
+                    } else {
+                        // Calculate difference in milliseconds and convert to days
+                        const diffTime = today - dueDate; 
+                        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); // Days past due
+                        
+                        if (diffDays <= 30) {
+                            agingBucket = '1-30 Days';
+                        } else if (diffDays <= 60) {
+                            agingBucket = '31-60 Days';
+                        } else if (diffDays <= 90) {
+                            agingBucket = '61-90 Days';
+                        } else {
+                            agingBucket = '90+ Days';
+                        }
+                    }
+                } catch (e) {
+                    console.error(`Error processing date for aging calculation on invoice ${invoice.invoiceid}:`, e);
+                    agingBucket = 'Error'; // Indicate date processing error
+                }
+            }
+            return { ...invoice, agingBucket }; // Add the calculated bucket
+        });
+
+        console.log('[API GET /accounting/invoices] Returning invoices with aging.');
+        res.json({ success: true, invoices: invoicesWithAging }); // Send modified array
 
     } catch (err) {
         console.error("[API GET /accounting/invoices] Error:", err);
@@ -275,6 +315,18 @@ router.post('/invoices/:invoiceId/email', authenticateToken, checkAccountingAcce
         // 5. Send the email using the service with PDF attachment
         const emailResult = await sendInvoiceEmail(transporter, invoiceDetails, pdfBuffer);
 
+        // 6. Update Invoice record to mark email as sent
+        try {
+            await pool.query(
+                'UPDATE Invoices SET EmailSentAt = CURRENT_TIMESTAMP WHERE InvoiceID = $1',
+                [invoiceId]
+            );
+            console.log(`[API POST /email] Updated EmailSentAt for Invoice ID: ${invoiceId}`);
+        } catch (updateError) {
+            // Log the error but don't fail the whole request if email was sent
+            console.error(`[API POST /email] Failed to update EmailSentAt for Invoice ID: ${invoiceId}`, updateError);
+        }
+
         let responsePayload = { success: true, message: `Invoice ${invoiceDetails.invoicenumber} emailed successfully.` };
         if (emailResult.previewUrl) {
             responsePayload.previewUrl = emailResult.previewUrl; 
@@ -285,6 +337,119 @@ router.post('/invoices/:invoiceId/email', authenticateToken, checkAccountingAcce
     } catch (err) {
         console.error(`[API POST /accounting/invoices/${invoiceId}/email] Error:`, err);
         res.status(500).json({ success: false, message: err.message || 'Failed to send invoice email.' });
+    }
+});
+
+// GET /api/accounting/invoices/:invoiceId/payments - Fetch payment history for an invoice
+router.get('/invoices/:invoiceId/payments', authenticateToken, checkAccountingAccess, async (req, res) => {
+    const { invoiceId } = req.params;
+    console.log(`[API GET /accounting/invoices/${invoiceId}/payments] Request received`);
+
+    if (isNaN(parseInt(invoiceId, 10))) {
+        return res.status(400).json({ success: false, message: 'Invalid Invoice ID format.' });
+    }
+
+    try {
+        // Query the new Payments table
+        const paymentResult = await pool.query(`
+            SELECT 
+                PaymentID, PaymentDate, AmountPaid, PaymentMethod, ReferenceNumber, Notes, RecordedAt
+            FROM Payments
+            WHERE InvoiceID = $1
+            ORDER BY PaymentDate ASC, RecordedAt ASC -- Order by date, then time recorded
+        `, [invoiceId]);
+
+        console.log(`[API GET /accounting/invoices/${invoiceId}/payments] Found ${paymentResult.rows.length} payments.`);
+        res.json({ success: true, payments: paymentResult.rows });
+
+    } catch (err) {
+        // Check specifically if the error is because the Payments table doesn't exist yet
+        if (err.code === '42P01') { // undefined_table error code in PostgreSQL
+            console.warn(`[API GET /payments] Payments table likely does not exist yet. Error: ${err.message}`);
+            // Return success with empty array, assuming table will be created
+            // Alternatively, return a specific error message if preferred.
+            return res.json({ success: true, payments: [] }); 
+        } else {
+            console.error(`[API GET /accounting/invoices/${invoiceId}/payments] Error:`, err);
+            res.status(500).json({ success: false, message: 'Failed to fetch payment history.' });
+        }
+    }
+});
+
+// POST /api/accounting/invoices/:invoiceId/payments - Record a new payment
+router.post('/invoices/:invoiceId/payments', authenticateToken, checkAccountingAccess, async (req, res) => {
+    const { invoiceId } = req.params;
+    const { paymentDate, amountPaid, paymentMethod, referenceNumber, notes } = req.body;
+    console.log(`[API POST /accounting/invoices/${invoiceId}/payments] Request received`, req.body);
+
+    // Validate input
+    if (isNaN(parseInt(invoiceId, 10))) {
+        return res.status(400).json({ success: false, message: 'Invalid Invoice ID format.' });
+    }
+    if (!paymentDate || isNaN(parseFloat(amountPaid)) || parseFloat(amountPaid) <= 0) {
+        return res.status(400).json({ success: false, message: 'Invalid payment date or amount provided.' });
+    }
+
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+
+        // 1. Fetch original invoice amount and current status
+        const invoiceRes = await client.query(
+            'SELECT Amount, PaymentStatus FROM Invoices WHERE InvoiceID = $1 FOR UPDATE', // Lock row
+            [invoiceId]
+        );
+        if (invoiceRes.rows.length === 0) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ success: false, message: 'Invoice not found.' });
+        }
+        if (invoiceRes.rows[0].paymentstatus === 'Paid') {
+             await client.query('ROLLBACK');
+            return res.status(400).json({ success: false, message: 'Invoice is already marked as paid.' });
+        }
+        const invoiceAmount = parseFloat(invoiceRes.rows[0].amount);
+
+        // 2. Insert the new payment record
+        await client.query(`
+            INSERT INTO Payments (InvoiceID, PaymentDate, AmountPaid, PaymentMethod, ReferenceNumber, Notes)
+            VALUES ($1, $2, $3, $4, $5, $6)
+        `, [invoiceId, paymentDate, amountPaid, paymentMethod || null, referenceNumber || null, notes || null]);
+        console.log(`[Record Payment] Inserted payment record for Invoice ID: ${invoiceId}`);
+
+        // 3. Calculate new total paid amount
+        const totalPaidRes = await client.query(
+            'SELECT SUM(AmountPaid) as total FROM Payments WHERE InvoiceID = $1',
+            [invoiceId]
+        );
+        const totalPaid = parseFloat(totalPaidRes.rows[0].total || 0);
+        console.log(`[Record Payment] New total paid for Invoice ID ${invoiceId}: ${totalPaid}`);
+
+        // 4. Update Invoice status if fully paid
+        let newStatus = invoiceRes.rows[0].paymentstatus; // Keep current status unless paid
+        if (totalPaid >= invoiceAmount) {
+            newStatus = 'Paid';
+            await client.query(
+                'UPDATE Invoices SET PaymentStatus = $1, UpdatedAt = CURRENT_TIMESTAMP WHERE InvoiceID = $2',
+                [newStatus, invoiceId]
+            );
+            console.log(`[Record Payment] Invoice ID ${invoiceId} status updated to Paid.`);
+        }
+
+        await client.query('COMMIT');
+        res.status(201).json({ success: true, message: 'Payment recorded successfully.', newStatus: newStatus });
+
+    } catch (err) {
+        await client.query('ROLLBACK');
+        // Check if error is due to Payments table not existing
+        if (err.code === '42P01') { 
+            console.error(`[Record Payment] Error: Payments table likely does not exist yet. ${err.message}`);
+            return res.status(500).json({ success: false, message: 'Database setup incomplete: Payments table missing.' });
+        } else {
+            console.error(`[API POST /accounting/invoices/${invoiceId}/payments] Error:`, err);
+            res.status(500).json({ success: false, message: 'Failed to record payment.' });
+        }
+    } finally {
+        client.release();
     }
 });
 

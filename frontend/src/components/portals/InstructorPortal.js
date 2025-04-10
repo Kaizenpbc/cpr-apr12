@@ -34,6 +34,8 @@ import {
     InputLabel,
     Select,
     MenuItem,
+    AppBar,
+    Toolbar,
 } from '@mui/material';
 import {
     CalendarMonth as CalendarIcon,
@@ -43,15 +45,33 @@ import {
     AssignmentTurnedIn as AttendanceIcon,
     Archive as ArchiveIcon,
     Logout as LogoutIcon,
+    Dashboard as DashboardIcon,
 } from '@mui/icons-material';
 import InstructorArchiveTable from '../tables/InstructorArchiveTable';
+import InstructorDashboard from '../dashboard/InstructorDashboard';
 
 const drawerWidth = 240;
+
+// Define Ontario 2024 Statutory Holidays (YYYY-MM-DD format)
+const ontarioHolidays2024 = new Set([
+    '2024-01-01', // New Year's Day
+    '2024-02-19', // Family Day
+    '2024-03-29', // Good Friday
+    '2024-05-20', // Victoria Day
+    '2024-07-01', // Canada Day
+    '2024-08-05', // Civic Holiday (Not statutory, but often observed)
+    '2024-09-02', // Labour Day
+    '2024-09-30', // National Day for Truth and Reconciliation (Federal, not Prov. stat but important)
+    '2024-10-14', // Thanksgiving Day
+    '2024-12-25', // Christmas Day
+    '2024-12-26', // Boxing Day
+]);
+// Note: Easter Sunday (Mar 31) & Remembrance Day (Nov 11) are not statutory holidays in ON.
 
 const InstructorPortal = () => {
     const { user, logout, socket } = useAuth();
     const navigate = useNavigate();
-    const [selectedView, setSelectedView] = useState('availability');
+    const [selectedView, setSelectedView] = useState('dashboard');
     const [selectedDate, setSelectedDate] = useState(null);
     const [showConfirmDialog, setShowConfirmDialog] = useState(false);
     const [confirmAction, setConfirmAction] = useState(null);
@@ -83,48 +103,41 @@ const InstructorPortal = () => {
         setIsLoading(true);
         console.log('[loadInitialData] Starting...');
         try {
+            // Fetch availability (now pre-filtered by backend) and scheduled classes
             const [availabilityResponse, classesResponse] = await Promise.all([
-                api.getAvailability(),
-                api.getScheduledClasses()
+                api.getAvailability(), // Returns array of *truly* available date strings
+                api.getScheduledClasses() // Returns { success: true, classes: [...] } for Status='Scheduled'
             ]);
             
-            let rawAvailableDates = [];
-            let rawScheduledClasses = [];
+            let availableDatesResult = [];
+            let scheduledClassesResult = [];
 
             if (Array.isArray(availabilityResponse)) { 
-                rawAvailableDates = availabilityResponse;
+                availableDatesResult = availabilityResponse;
             }
             if (classesResponse && Array.isArray(classesResponse.classes)) {
-                rawScheduledClasses = classesResponse.classes;
+                scheduledClassesResult = classesResponse.classes; 
             }
-
-            const scheduledDatesSet = new Set();
-            rawScheduledClasses.forEach(course => {
-                if (course.datescheduled) {
-                    try {
-                        const dateStr = new Date(course.datescheduled).toISOString().split('T')[0];
-                        scheduledDatesSet.add(dateStr);
-                    } catch (e) {
-                        console.error(`Error parsing scheduled date: ${course.datescheduled}`, e);
-                    }
-                }
-            });
-            console.log('[loadInitialData] Set of scheduled dates (YYYY-MM-DD):', scheduledDatesSet);
-
-            const filteredAvailableDates = rawAvailableDates.filter(dateString => {
-                try {
-                    const availDateStr = new Date(dateString).toISOString().split('T')[0];
-                    return !scheduledDatesSet.has(availDateStr);
-                } catch (e) {
-                    console.error(`Error parsing availability date: ${dateString}`, e);
-                    return false;
-                }
-            });
-            console.log('[loadInitialData] Filtered availability dates:', filteredAvailableDates);
             
-            setAvailableDates(filteredAvailableDates);
-            setScheduledClasses(rawScheduledClasses);
-            console.log('[loadInitialData] State updated with filtered availability');
+            // Set state directly with results from API
+            // Store availableDates as a Set of YYYY-MM-DD strings for efficient lookup
+            const availableDatesSet = new Set();
+            availableDatesResult.forEach(dateStr => {
+                try {
+                    availableDatesSet.add(new Date(dateStr).toISOString().split('T')[0]);
+                } catch (e) {
+                    console.error(`Error parsing availability date from API: ${dateStr}`, e);
+                }
+            });
+            console.log('[loadInitialData] BEFORE setAvailableDates (as Set YYYY-MM-DD). Data:', availableDatesSet);
+            setAvailableDates(availableDatesSet); 
+            console.log('[loadInitialData] AFTER setAvailableDates.');
+            
+            console.log('[loadInitialData] BEFORE setScheduledClasses. Data:', scheduledClassesResult);
+            setScheduledClasses(scheduledClassesResult);
+            console.log('[loadInitialData] AFTER setScheduledClasses.');
+
+            console.log('[loadInitialData] State update calls finished.');
             
         } catch (error) {
             console.error('Error loading initial data:', error);
@@ -208,22 +221,24 @@ const InstructorPortal = () => {
 
     useEffect(() => {
         console.log(`[useEffect View Change] View changed to: ${selectedView}`);
+        // Reset states when view changes
         setStudentsForAttendance([]);
-        setClassToManage(null);
+        setClassToManage(null); 
         setStudentsError('');
 
+        // Only load data here that is EXCLUSIVE to a specific view
         if (selectedView === 'archive') {
             loadArchivedCourses();
-        } else if (selectedView === 'classes' || selectedView === 'availability') {
-            loadInitialData();
         } else if (selectedView === 'attendance') {
-            console.log('[useEffect View Change] Attendance view selected. Data should be loaded by other effect.');
-            if (scheduledClasses.length === 1) {
-                console.log('[useEffect View Change] Auto-selecting the only scheduled class for attendance.');
-                setClassToManage(scheduledClasses[0]);
-            }
+             // Auto-select class if only one scheduled
+             // The main data (scheduledClasses) should already be loaded by the first effect
+             if (scheduledClasses.length === 1) {
+                 console.log('[useEffect View Change] Auto-selecting the only scheduled class for attendance.');
+                 setClassToManage(scheduledClasses[0]);
+             }
         }
-    }, [selectedView]);
+        // Removed loadInitialData call from here - let the first useEffect handle it
+    }, [selectedView, loadArchivedCourses, scheduledClasses]); // Removed loadInitialData from deps
 
     useEffect(() => {
         if (classToManage) {
@@ -234,22 +249,31 @@ const InstructorPortal = () => {
         }
     }, [classToManage, fetchStudentsForClass]);
 
-    const handleDateClick = async (dateString) => {
-        console.log('[handleDateClick] Date clicked:', dateString);
-        const isAvailable = availableDates.includes(dateString);
-        console.log('[handleDateClick] Is available?', isAvailable);
+    const handleDateClick = async (date) => {
+        const isoDateString = date.toISOString().split('T')[0];
+        console.log('[handleDateClick] Date clicked (YYYY-MM-DD):', isoDateString);
+        
+        console.log('[handleDateClick] Checking against availableDates Set. Contents:', availableDates);
+
+        const isAvailable = availableDates.has(isoDateString);
+        console.log('[handleDateClick] Is available in Set?', isAvailable);
+
         if (isAvailable) {
             setConfirmAction('remove');
-            setSelectedDate(dateString);
+            setSelectedDate(isoDateString);
             setShowConfirmDialog(true);
         } else {
             try {
                 console.log('[handleDateClick] Calling api.addAvailability...');
-                await api.addAvailability(dateString);
-                console.log('[handleDateClick] api.addAvailability succeeded. Updating state...');
-                setAvailableDates(prevDates => [...prevDates, dateString]);
-                console.log('[handleDateClick] State update complete. Showing snackbar...');
-                showSnackbar('Date marked as available');
+                const response = await api.addAvailability(isoDateString);
+                
+                if (response.success) {
+                    console.log('[handleDateClick] api.addAvailability succeeded. Refreshing data...');
+                    await loadInitialData(); 
+                    showSnackbar('Date marked as available');
+                } else {
+                    throw new Error(response.message || 'API failed to add availability');
+                }
             } catch (error) {
                 console.error('Error adding availability:', error);
                 showSnackbar(error.message || 'Failed to add availability. Please try again.', 'error');
@@ -260,9 +284,14 @@ const InstructorPortal = () => {
     const handleConfirmAction = async () => {
         if (confirmAction === 'remove') {
             try {
-                await api.removeAvailability(selectedDate);
-                setAvailableDates(availableDates.filter(d => d !== selectedDate));
-                showSnackbar('Date removed from availability');
+                const response = await api.removeAvailability(selectedDate);
+                if (response.success) {
+                    console.log('[handleConfirmAction] api.removeAvailability succeeded. Refreshing data...');
+                    await loadInitialData(); 
+                    showSnackbar('Date removed from availability');
+                } else {
+                    throw new Error(response.message || 'API failed to remove availability');
+                }
             } catch (error) {
                 console.error('Error removing availability:', error);
                 showSnackbar(error.message || 'Failed to remove availability. Please try again.', 'error');
@@ -282,8 +311,16 @@ const InstructorPortal = () => {
     };
 
     const handleLogout = () => {
-        logout();
-        navigate('/');
+        // Construct the message before logging out
+        const firstName = user?.firstname || 'Instructor'; // Use fallback name
+        const logoutMessage = `Bye ${firstName}, Keep Saving Lives!`;
+        showSnackbar(logoutMessage, 'info'); // Show the message
+        
+        // Perform logout actions after a short delay to allow snackbar to show (optional but nice UX)
+        setTimeout(() => {
+            logout();
+            navigate('/');
+        }, 1500); // Delay in milliseconds (adjust as needed)
     };
 
     const handleAttendanceChange = async (studentId, currentAttendance) => {
@@ -359,10 +396,27 @@ const InstructorPortal = () => {
         }
     };
 
+    // Function to format YYYY-MM-DD string to MM/DD/YYYY (or other preferred format)
+    const formatDisplayDate = (isoDateString) => {
+        if (!isoDateString) return 'N/A';
+        try {
+            const parts = isoDateString.split('-');
+            if (parts.length === 3) {
+                // Simple MM/DD/YYYY format
+                return `${parts[1]}/${parts[2]}/${parts[0]}`;
+            }
+            return isoDateString; // Fallback
+        } catch (e) {
+            return 'Invalid Date';
+        }
+    };
+
     const renderAvailabilityCalendar = () => {
         const displayMonth = currentDate.getMonth();
         const displayYear = currentDate.getFullYear();
         const monthName = currentDate.toLocaleString('default', { month: 'long' });
+        const today = new Date(); // Get today's date
+        today.setHours(0, 0, 0, 0); // Normalize to start of day
 
         console.log('[renderAvailabilityCalendar] Rendering for:', monthName, displayYear);
         console.log('[renderAvailabilityCalendar] State - availableDates:', availableDates, 'scheduledClasses:', scheduledClasses);
@@ -407,7 +461,14 @@ const InstructorPortal = () => {
                                 boxSizing: 'border-box'
                             }}
                         >
-                            <Typography variant="caption" sx={{ fontWeight: 'bold', color: 'text.secondary', textTransform: 'uppercase' }}>
+                            <Typography 
+                                variant="caption" 
+                                sx={{ 
+                                    fontWeight: 'bold',
+                                    color: 'text.secondary', 
+                                    textTransform: 'uppercase' 
+                                }}
+                            >
                                 {day}
                             </Typography>
                         </Box>
@@ -415,17 +476,59 @@ const InstructorPortal = () => {
 
                     {days.map((date, index) => {
                         const dateString = date ? date.toDateString() : null;
-                        const isToday = date && new Date().toDateString() === dateString;
-                        const isAvailable = dateString && availableDates.includes(dateString);
+                        const isoDateString = date ? date.toISOString().split('T')[0] : null; 
+                        const isToday = date && date.toDateString() === today.toDateString(); // More precise today check
+                        const isPastDate = date && date < today; // Check if date is before today
+                        const isAvailable = availableDates.has(isoDateString);
+                        const isHoliday = isoDateString && ontarioHolidays2024.has(isoDateString); // Check if it's a holiday
+
+                        // Check if a class is scheduled on this date
+                        const scheduledClassOnDate = date && scheduledClasses.find(course => 
+                            course.datescheduled && 
+                            new Date(course.datescheduled).toISOString().split('T')[0] === isoDateString
+                        );
+
+                        // Determine background color and content - PAST DATE takes precedence over AVAILABLE/HOLIDAY
+                        let bgColor = undefined;
+                        let dayContent = null;
+                        let cellCursor = date ? 'pointer' : 'default';
+                        let dateColor = isToday ? 'primary.main' : 'text.secondary';
+
+                        if (!date) {
+                            bgColor = '#f5f5f5 !important'; // Blank days
+                        } else if (isPastDate) {
+                            bgColor = '#fafafa !important'; // Different grey for past dates
+                            dateColor = '#bdbdbd'; // Dim the date number
+                            cellCursor = 'not-allowed'; // Indicate non-clickable
+                        } else if (scheduledClassOnDate) { // Highest functional priority
+                            bgColor = '#e3f2fd !important'; 
+                            dayContent = <ClassIcon fontSize="small" sx={{ alignSelf: 'center', mt: 'auto', color: 'primary.main' }} />;
+                            dateColor = 'text.primary';
+                        } else if (isHoliday) { // Next priority
+                            bgColor = '#eeeeee !important'; 
+                            dayContent = <Typography variant="caption" component="span" sx={{ fontStyle: 'italic', color: 'text.secondary', alignSelf: 'center', mt: 'auto' }}>H</Typography>; 
+                            dateColor = 'text.primary';
+                            cellCursor = 'not-allowed'; // Make holidays non-clickable too
+                        } else if (isAvailable) { // Lowest priority
+                            bgColor = '#fffde7 !important'; 
+                            dayContent = <Typography variant="caption" component="span" sx={{ fontWeight: 'bold', color: 'success.main', alignSelf: 'center', mt: 'auto' }}>A</Typography>;
+                            dateColor = 'text.primary';
+                        }
+                        // Highlight today if it doesn't have another specific background
+                        if (isToday && !scheduledClassOnDate && !isHoliday && !isAvailable && !isPastDate) {
+                             bgColor = '#e8f5e9 !important'; 
+                             dateColor = 'primary.main';
+                        }
 
                         return (
                             <Box 
                                 key={date ? dateString : `blank-${index}`}
-                                onClick={() => dateString && handleDateClick(dateString)}
+                                // Prevent clicking on holidays or past dates
+                                onClick={() => date && !isHoliday && !isPastDate && handleDateClick(date)}
                                 sx={{ 
                                     width: 'calc(100% / 7)', 
-                                    aspectRatio: '1 / 1', 
-                                    cursor: date ? 'pointer' : 'default',
+                                    minHeight: '5em',
+                                    cursor: cellCursor, // Use determined cursor style
                                     borderRight: (index % 7 < 6) ? '1px solid' : 'none',
                                     borderBottom: (index < days.length - (days.length % 7)) || days.length % 7 === 0 ? '1px solid' : 'none',
                                     borderColor: 'divider', 
@@ -434,10 +537,7 @@ const InstructorPortal = () => {
                                     '&:hover': date ? {
                                         bgcolor: 'action.hover' 
                                     } : {},
-                                    backgroundColor: isToday ? '#e8f5e9 !important' : 
-                                             isAvailable ? '#fffde7 !important' :
-                                            !date ? '#f5f5f5 !important' : 
-                                             undefined, 
+                                    backgroundColor: bgColor, // Apply determined background
                                 }}
                             >
                                 {date ? (
@@ -447,37 +547,34 @@ const InstructorPortal = () => {
                                             height: '100%',
                                             display: 'flex',
                                             flexDirection: 'column', 
-                                            justifyContent: 'space-between',
                                             alignItems: 'flex-start',
                                             p: 0.5, 
                                             border: isToday ? '2px solid' : 'none',
                                             borderColor: isToday ? 'primary.main' : 'transparent',
-                                            color: isAvailable ? 'text.primary' : isToday ? 'primary.main' : 'text.secondary', 
+                                            color: dateColor, 
+                                            boxSizing: 'border-box'
                                         }}
                                     >
                                         <Typography 
                                             variant="caption" 
                                             component="span"
                                             sx={{ 
-                                                fontWeight: isToday ? 'bold' : 'normal',
+                                                fontWeight: 'bold',
                                             }}
                                         >
                                             {date.getDate()}
                                         </Typography>
-                                        {isAvailable && (
-                                            <Typography 
-                                                variant="caption" 
-                                                component="span" 
-                                                sx={{ 
-                                                    fontWeight: 'bold', 
-                                                    color: 'green',
-                                                    alignSelf: 'center',
-                                                    mt: 'auto'
-                                                }}
-                                            >
-                                                A
-                                            </Typography>
-                                        )}
+                                        {/* Wrapper to center content in remaining space */}
+                                        <Box sx={{ 
+                                            flexGrow: 1, // Make this box fill remaining vertical space
+                                            width: '100%', // Ensure it uses full width for horizontal centering
+                                            display: 'flex', 
+                                            alignItems: 'center', // Vertically center content within this box
+                                            justifyContent: 'center' // Horizontally center content within this box
+                                        }}>
+                                            {/* Ensure dayContent itself doesn't override alignment if it's a Typography */}
+                                            {React.isValidElement(dayContent) ? React.cloneElement(dayContent, { sx: { ...dayContent.props.sx, alignSelf: 'center', mt: 0 } }) : dayContent}
+                                        </Box>
                                     </Box>
                                 ) : null}
                             </Box>
@@ -489,27 +586,40 @@ const InstructorPortal = () => {
     };
 
     const renderMyClasses = () => {
-        // Get scheduled classes and AVAILABLE DATES (already filtered) from state
+        // Get scheduled classes and AVAILABLE DATES (Set) from state
         const classesToDisplay = Array.isArray(scheduledClasses) ? scheduledClasses : [];
-        const availabilityDates = Array.isArray(availableDates) ? availableDates : [];
+        // Ensure availableDates is treated as a Set, default to empty Set if needed
+        const currentAvailableDatesSet = (availableDates instanceof Set) ? availableDates : new Set(); 
+        // Convert Set to array for mapping
+        const availabilityDatesArray = Array.from(currentAvailableDatesSet);
 
-        console.log('[renderMyClasses] Rendering scheduledClasses (state):', classesToDisplay);
-        console.log('[renderMyClasses] Rendering availableDates (state, pre-filtered):', availabilityDates);
+        // <<< ADD LOGGING >>>
+        console.log('[renderMyClasses] Received scheduledClasses state:', classesToDisplay);
+        console.log('[renderMyClasses] Received availableDates state (Set):', currentAvailableDatesSet);
+        console.log('[renderMyClasses] Converted availabilityDates to Array:', availabilityDatesArray);
+        // <<< END LOGGING >>>
 
-        // Combine classes and availability into a single list with type and comparable date
+        // Combine items
         const combinedItems = [
-            ...classesToDisplay.map(course => ({
-                ...course,
-                type: 'class',
-                sortDate: new Date(course.datescheduled),
-                key: `class-${course.courseid}` // Unique key for React
-            })),
-            ...availabilityDates.map(dateString => ({
-                type: 'availability',
-                sortDate: new Date(dateString), 
-                dateString: dateString,
-                key: `avail-${dateString}` // Unique key for React
-            }))
+            ...classesToDisplay.map(course => {
+                const scheduledIsoDate = course.datescheduled ? new Date(course.datescheduled).toISOString().split('T')[0] : null;
+                return {
+                    ...course,
+                    type: 'class',
+                    sortDate: new Date(course.datescheduled || 0), // Keep for sorting
+                    displayDate: formatDisplayDate(scheduledIsoDate), // Use formatted UTC date string for display
+                    key: `class-${course.courseid}` 
+                };
+            }),
+            ...availabilityDatesArray.map(dateString => { // dateString is YYYY-MM-DD
+                return {
+                    type: 'availability',
+                    sortDate: new Date(dateString), // Keep for sorting
+                    displayDate: formatDisplayDate(dateString), // Use formatted date string for display
+                    dateString: dateString,
+                    key: `avail-${dateString}` 
+                };
+            })
         ];
 
         // Sort combined items by date
@@ -522,15 +632,15 @@ const InstructorPortal = () => {
                 <Table>
                     <TableHead>
                         <TableRow>
-                            <TableCell>Date</TableCell>
-                            <TableCell>Organization</TableCell>
-                            <TableCell>Location</TableCell>
-                            <TableCell>Course No</TableCell>
-                            <TableCell>Course Type</TableCell>
-                            <TableCell>Students R</TableCell> 
-                            <TableCell>Students A</TableCell>
-                            <TableCell>Notes</TableCell>
-                            <TableCell>Status</TableCell>
+                            <TableCell sx={{ fontWeight: 'bold' }}>Date</TableCell>
+                            <TableCell sx={{ fontWeight: 'bold' }}>Organization</TableCell>
+                            <TableCell sx={{ fontWeight: 'bold' }}>Location</TableCell>
+                            <TableCell sx={{ fontWeight: 'bold' }}>Course No</TableCell>
+                            <TableCell sx={{ fontWeight: 'bold' }}>Course Type</TableCell>
+                            <TableCell sx={{ fontWeight: 'bold' }}>Students R</TableCell> 
+                            <TableCell sx={{ fontWeight: 'bold' }}>Students A</TableCell>
+                            <TableCell sx={{ fontWeight: 'bold' }}>Notes</TableCell>
+                            <TableCell sx={{ fontWeight: 'bold' }}>Status</TableCell>
                         </TableRow>
                     </TableHead>
                     <TableBody>
@@ -541,7 +651,7 @@ const InstructorPortal = () => {
                         ) : (
                             combinedItems.map((item) => (
                                 <TableRow key={item.key}>
-                                    <TableCell>{item.sortDate.toLocaleDateString()}</TableCell>
+                                    <TableCell>{item.displayDate}</TableCell>
                                     {item.type === 'class' ? (
                                         <> 
                                             <TableCell>{item.organizationname || '-'}</TableCell>
@@ -707,6 +817,8 @@ const InstructorPortal = () => {
 
     const renderSelectedView = () => {
         switch (selectedView) {
+            case 'dashboard':
+                return <InstructorDashboard scheduledClasses={scheduledClasses} />;
             case 'availability':
                 return renderAvailabilityCalendar();
             case 'classes':
@@ -724,6 +836,35 @@ const InstructorPortal = () => {
 
     return (
         <Box sx={{ display: 'flex' }}>
+            {/* --- AppBar --- */}
+            <AppBar
+                position="fixed"
+                sx={{ zIndex: (theme) => theme.zIndex.drawer + 1 }} 
+            >
+                <Toolbar>
+                    {/* You can add a logo here if desired */}
+                    {/* <img src="/path/to/logo.svg" alt="Logo" height="40" /> */}
+                    <Typography 
+                        variant="h6" 
+                        noWrap 
+                        component="div" 
+                        sx={{ 
+                            flexGrow: 1, 
+                            ml: 1, 
+                            textAlign: 'center'
+                        }}
+                    >
+                        Instructor Portal
+                    </Typography>
+                    <Typography variant="body1" noWrap sx={{ mr: 2 }}>
+                        Welcome {user?.firstname || 'Instructor'}!
+                    </Typography>
+                    {/* Optional: Add a logout button here as well/instead */}
+                    {/* <Button color="inherit" onClick={handleLogout}>Logout</Button> */}
+                </Toolbar>
+            </AppBar>
+            
+            {/* --- Drawer --- */}
             <Drawer
                 variant="permanent"
                 sx={{
@@ -732,17 +873,54 @@ const InstructorPortal = () => {
                     '& .MuiDrawer-paper': {
                         width: drawerWidth,
                         boxSizing: 'border-box',
+                        // Removed mt: 8 - Toolbar adds offset
                     },
                 }}
             >
-                <Box sx={{ overflow: 'auto', mt: 8 }}>
+                {/* Toolbar spacer to push content below AppBar */}
+                <Toolbar /> 
+                <Box sx={{ overflow: 'auto' }}> 
                     <List>
+                        <ListItem 
+                            component="div"
+                            selected={selectedView === 'dashboard'}
+                            onClick={() => setSelectedView('dashboard')}
+                            sx={{
+                                cursor: 'pointer', 
+                                py: 1.5, 
+                                backgroundColor: selectedView === 'dashboard' ? 'primary.light' : 'transparent',
+                                color: selectedView === 'dashboard' ? 'primary.contrastText' : 'inherit',
+                                '& .MuiListItemIcon-root': {
+                                    color: selectedView === 'dashboard' ? 'primary.contrastText' : 'inherit',
+                                },
+                                '&:hover': {
+                                    backgroundColor: selectedView === 'dashboard' ? 'primary.main' : 'action.hover',
+                                }
+                            }}
+                        >
+                            <ListItemIcon sx={{ color: 'inherit' }}>
+                                <DashboardIcon />
+                            </ListItemIcon>
+                            <ListItemText primary="Dashboard" />
+                        </ListItem>
                         <ListItem 
                             component="div"
                             selected={selectedView === 'availability'}
                             onClick={() => setSelectedView('availability')}
+                            sx={{
+                                cursor: 'pointer', 
+                                py: 1.5, 
+                                backgroundColor: selectedView === 'availability' ? 'primary.light' : 'transparent',
+                                color: selectedView === 'availability' ? 'primary.contrastText' : 'inherit',
+                                '& .MuiListItemIcon-root': {
+                                    color: selectedView === 'availability' ? 'primary.contrastText' : 'inherit',
+                                },
+                                '&:hover': {
+                                    backgroundColor: selectedView === 'availability' ? 'primary.main' : 'action.hover',
+                                }
+                            }}
                         >
-                            <ListItemIcon>
+                            <ListItemIcon sx={{ color: 'inherit' }}>
                                 <CalendarIcon />
                             </ListItemIcon>
                             <ListItemText primary="Schedule Availability" />
@@ -751,8 +929,20 @@ const InstructorPortal = () => {
                             component="div"
                             selected={selectedView === 'classes'}
                             onClick={() => setSelectedView('classes')}
+                             sx={{
+                                cursor: 'pointer', 
+                                py: 1.5, 
+                                backgroundColor: selectedView === 'classes' ? 'primary.light' : 'transparent',
+                                color: selectedView === 'classes' ? 'primary.contrastText' : 'inherit',
+                                '& .MuiListItemIcon-root': {
+                                    color: selectedView === 'classes' ? 'primary.contrastText' : 'inherit',
+                                },
+                                '&:hover': {
+                                    backgroundColor: selectedView === 'classes' ? 'primary.main' : 'action.hover',
+                                }
+                            }}
                         >
-                            <ListItemIcon>
+                            <ListItemIcon sx={{ color: 'inherit' }}>
                                 <ClassIcon />
                             </ListItemIcon>
                             <ListItemText primary="My Classes" />
@@ -761,9 +951,20 @@ const InstructorPortal = () => {
                             component="div" 
                             selected={selectedView === 'attendance'}
                             onClick={() => setSelectedView('attendance')}
-                            sx={{ cursor: 'pointer' }}
+                             sx={{
+                                cursor: 'pointer', 
+                                py: 1.5, 
+                                backgroundColor: selectedView === 'attendance' ? 'primary.light' : 'transparent',
+                                color: selectedView === 'attendance' ? 'primary.contrastText' : 'inherit',
+                                '& .MuiListItemIcon-root': {
+                                    color: selectedView === 'attendance' ? 'primary.contrastText' : 'inherit',
+                                },
+                                '&:hover': {
+                                    backgroundColor: selectedView === 'attendance' ? 'primary.main' : 'action.hover',
+                                }
+                            }}
                         >
-                            <ListItemIcon>
+                            <ListItemIcon sx={{ color: 'inherit' }}>
                                 <AttendanceIcon />
                             </ListItemIcon>
                             <ListItemText primary="Attendance" />
@@ -772,9 +973,20 @@ const InstructorPortal = () => {
                             component="div" 
                             selected={selectedView === 'archive'}
                             onClick={() => setSelectedView('archive')}
-                            sx={{ cursor: 'pointer' }}
+                             sx={{
+                                cursor: 'pointer', 
+                                py: 1.5, 
+                                backgroundColor: selectedView === 'archive' ? 'primary.light' : 'transparent',
+                                color: selectedView === 'archive' ? 'primary.contrastText' : 'inherit',
+                                '& .MuiListItemIcon-root': {
+                                    color: selectedView === 'archive' ? 'primary.contrastText' : 'inherit',
+                                },
+                                '&:hover': {
+                                    backgroundColor: selectedView === 'archive' ? 'primary.main' : 'action.hover',
+                                }
+                            }}
                         >
-                            <ListItemIcon>
+                            <ListItemIcon sx={{ color: 'inherit' }}>
                                 <ArchiveIcon />
                             </ListItemIcon>
                             <ListItemText primary="Archive" />
@@ -785,7 +997,11 @@ const InstructorPortal = () => {
                         <ListItem 
                             component="div" 
                             onClick={handleLogout}
-                            sx={{ cursor: 'pointer' }}
+                            sx={{ 
+                                cursor: 'pointer', 
+                                py: 1.5, 
+                                '&:hover': { backgroundColor: 'action.hover'} 
+                            }}
                         >
                             <ListItemIcon>
                                 <LogoutIcon />
@@ -796,11 +1012,11 @@ const InstructorPortal = () => {
                 </Box>
             </Drawer>
 
+            {/* --- Main Content Area --- */}
             <Box component="main" sx={{ flexGrow: 1, p: 3 }}>
+                 {/* Toolbar spacer to push content below AppBar */}
+                 <Toolbar />
                 <Container maxWidth="lg">
-                    <Typography variant="h4" gutterBottom>
-                        Welcome, {user.firstname} {user.lastname}
-                    </Typography>
                     
                     {isLoading ? (
                         <Typography>Loading data...</Typography>

@@ -27,6 +27,7 @@ import AccountsReceivableTable from '../tables/AccountsReceivableTable'; // Impo
 // Import ViewStudentsDialog if needed for the Review button
 import ViewStudentsDialog from '../dialogs/ViewStudentsDialog'; 
 import InvoiceDetailDialog from '../dialogs/InvoiceDetailDialog'; // Import Invoice Detail Dialog
+import RecordPaymentDialog from '../dialogs/RecordPaymentDialog'; // Import Record Payment Dialog
 
 const drawerWidth = 240;
 
@@ -50,6 +51,9 @@ const AccountingPortal = () => {
     // Add state for Invoice Detail Dialog
     const [showInvoiceDetailDialog, setShowInvoiceDetailDialog] = useState(false);
     const [selectedInvoiceForDetail, setSelectedInvoiceForDetail] = useState(null);
+    // Add state for Record Payment Dialog
+    const [showRecordPaymentDialog, setShowRecordPaymentDialog] = useState(false);
+    const [selectedInvoiceForPayment, setSelectedInvoiceForPayment] = useState(null); // Store the whole invoice object
 
     // Handler to load billing queue
     const loadBillingQueue = useCallback(async () => {
@@ -140,11 +144,25 @@ const AccountingPortal = () => {
         setSelectedCourseForView(null);
     };
 
-    // Add placeholder handlers for AR table buttons
-    const handleRecordPaymentClick = (invoiceId) => {
-        console.log("Record Payment clicked for invoice:", invoiceId);
-        alert("Record Payment functionality not yet implemented.");
-        // TODO: Implement payment recording logic (maybe open modal, call API)
+    // Open Record Payment Dialog
+    const handleRecordPaymentClick = (invoice) => {
+        console.log("Record Payment clicked for invoice:", invoice);
+        // alert("Record Payment functionality not yet implemented."); // Remove placeholder
+        setSelectedInvoiceForPayment(invoice); // Store the full invoice object
+        setShowRecordPaymentDialog(true);
+    };
+
+    // Close Record Payment Dialog
+    const handleRecordPaymentDialogClose = () => {
+        setShowRecordPaymentDialog(false);
+        setSelectedInvoiceForPayment(null);
+    };
+
+    // Handler after payment is successfully recorded in the dialog
+    const handlePaymentSuccessfullyRecorded = (message) => {
+        setSnackbar({ open: true, message: message, severity: 'success' });
+        // Refresh the invoice list to show updated status and potentially new totals
+        loadInvoices(); 
     };
 
     // handleViewDetailsClick can likely reuse handleReviewCourseClick
@@ -290,6 +308,18 @@ const AccountingPortal = () => {
                     invoiceId={selectedInvoiceForDetail}
                     // Pass email handler down
                     onEmailClick={handleEmailInvoiceClick} 
+                />
+            )}
+
+            {/* Record Payment Dialog */}
+            {showRecordPaymentDialog && selectedInvoiceForPayment && (
+                <RecordPaymentDialog
+                    open={showRecordPaymentDialog}
+                    onClose={handleRecordPaymentDialogClose}
+                    invoiceId={selectedInvoiceForPayment.invoiceid}
+                    invoiceNumber={selectedInvoiceForPayment.invoicenumber}
+                    invoiceAmount={selectedInvoiceForPayment.amount} // Pass amount if needed
+                    onPaymentRecorded={handlePaymentSuccessfullyRecorded}
                 />
             )}
 

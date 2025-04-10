@@ -256,174 +256,28 @@ app.get('/api/organizations/:id/courses', authenticateToken, async (req, res) =>
     }
 });
 
-// Instructor Availability Endpoints
-app.post('/api/instructor/availability', authenticateToken, async (req, res) => {
-    try {
-        const { date } = req.body;
-        const userId = req.user.userid; // Get the UserID from the token/middleware
+// Instructor Availability Endpoints (MOVED TO routes/instructors.js)
+// app.post('/api/instructor/availability', authenticateToken, async (req, res) => {
+//     // ... (removed code) ...
+// });
+// 
+// app.delete('/api/instructor/availability/:date', authenticateToken, async (req, res) => {
+//     // ... (removed code) ...
+// });
+// 
+// app.get('/api/instructor/availability', authenticateToken, async (req, res) => {
+//     // ... (removed code) ...
+// });
 
-        // 1. Find the InstructorID based on the UserID
-        const instructorResult = await pool.query(
-            'SELECT InstructorID FROM Instructors WHERE UserID = $1',
-            [userId]
-        );
-
-        if (instructorResult.rows.length === 0) {
-            return res.status(403).json({ success: false, message: 'User is not an instructor' });
-        }
-        const instructorId = instructorResult.rows[0].instructorid; // Correct InstructorID
-
-        // 2. Insert using the correct InstructorID
-        const result = await pool.query(
-            'INSERT INTO InstructorAvailability (InstructorID, AvailableDate) VALUES ($1, $2) RETURNING *',
-            [instructorId, date] // Use the fetched instructorId
-        );
-
-        res.status(201).json({ success: true, message: 'Availability added successfully' }); // Use 201 for successful creation
-    } catch (error) {
-        console.error('Error adding availability:', error);
-        // Check for potential duplicate entry error (unique constraint violation)
-        if (error.code === '23505') { // PostgreSQL unique violation code
-            return res.status(409).json({ success: false, message: 'Date already marked as available' });
-        }
-        res.status(500).json({ success: false, message: 'Failed to add availability' });
-    }
-});
-
-app.delete('/api/instructor/availability/:date', authenticateToken, async (req, res) => {
-    try {
-        const { date } = req.params;
-        const userId = req.user.userid; // Get the UserID from the token/middleware
-
-        // 1. Find the InstructorID based on the UserID
-        const instructorResult = await pool.query(
-            'SELECT InstructorID FROM Instructors WHERE UserID = $1',
-            [userId]
-        );
-
-        if (instructorResult.rows.length === 0) {
-            return res.status(403).json({ success: false, message: 'User is not an instructor' });
-        }
-        const instructorId = instructorResult.rows[0].instructorid; // Correct InstructorID
-
-        // 2. Delete using the correct InstructorID
-        const deleteResult = await pool.query(
-            'DELETE FROM InstructorAvailability WHERE InstructorID = $1 AND AvailableDate = $2',
-            [instructorId, date] // Use the fetched instructorId
-        );
-
-        // Check if any row was actually deleted
-        if (deleteResult.rowCount > 0) {
-            res.json({ success: true, message: 'Availability removed successfully' });
-        } else {
-            // Optionally, you could return a 404 if the date wasn't found for this instructor
-            res.status(404).json({ success: false, message: 'Availability date not found for this instructor' });
-        }
-    } catch (error) {
-        console.error('Error removing availability:', error);
-        res.status(500).json({ success: false, message: 'Failed to remove availability' });
-    }
-});
-
-app.get('/api/instructor/availability', authenticateToken, async (req, res) => {
-    try {
-        const userId = req.user.userid; // Get the UserID from the token/middleware
-
-        // 1. Find the InstructorID based on the UserID
-        const instructorResult = await pool.query(
-            'SELECT InstructorID FROM Instructors WHERE UserID = $1',
-            [userId]
-        );
-
-        if (instructorResult.rows.length === 0) {
-            return res.status(403).json({ success: false, message: 'User is not an instructor' });
-        }
-        const instructorId = instructorResult.rows[0].instructorid; // Correct InstructorID
-
-        // 2. Fetch availability using the correct InstructorID
-        const result = await pool.query(
-            'SELECT AvailableDate FROM InstructorAvailability WHERE InstructorID = $1',
-            [instructorId] // Use the fetched instructorId
-        );
-
-        // Directly return the array of dates as expected by the frontend
-        res.json(result.rows.map(row => row.availabledate));
-    } catch (error) {
-        console.error('Error fetching availability:', error);
-        res.status(500).json({ success: false, message: 'Failed to fetch availability' });
-    }
-});
-
-// Scheduled Classes Endpoints (Corrected for Instructor Portal)
-app.get('/api/instructor/classes', authenticateToken, async (req, res) => {
-    try {
-        const userId = req.user.userid; // Get UserID
-        // 1. Find InstructorID
-        const instructorResult = await pool.query('SELECT InstructorID FROM Instructors WHERE UserID = $1', [userId]);
-        if (instructorResult.rows.length === 0) {
-            return res.json({ success: true, classes: [] }); // Return empty if not an instructor
-        }
-        const instructorId = instructorResult.rows[0].instructorid;
-
-        // 2. Query Courses table for this instructor where status is Scheduled
-        const result = await pool.query(`
-            SELECT 
-                c.CourseID, c.CourseNumber, c.DateScheduled, c.Location, c.Status,
-                c.StudentsRegistered,
-                c.Notes, 
-                o.OrganizationName, 
-                ct.CourseTypeName,
-                -- Calculate actual attendance count
-                COUNT(CASE WHEN s.Attendance = TRUE THEN 1 END) as studentsattendance
-            FROM Courses c
-            JOIN Organizations o ON c.OrganizationID = o.OrganizationID
-            JOIN CourseTypes ct ON c.CourseTypeID = ct.CourseTypeID
-            -- Join Students table to count attendance
-            LEFT JOIN Students s ON c.CourseID = s.CourseID 
-            WHERE c.InstructorID = $1 AND c.Status = 'Scheduled'
-            -- Group by all non-aggregated columns
-            GROUP BY c.CourseID, c.CourseNumber, c.DateScheduled, c.Location, c.Status, 
-                     c.StudentsRegistered, c.Notes, o.OrganizationName, ct.CourseTypeName
-            ORDER BY c.DateScheduled ASC 
-        `, [instructorId]);
-
-        res.json({ success: true, classes: result.rows });
-    } catch (error) {
-        console.error('Error fetching instructor scheduled classes:', error);
-        res.status(500).json({ success: false, message: 'Failed to fetch scheduled classes' });
-    }
-});
-
-app.post('/api/instructor/classes', authenticateToken, async (req, res) => {
-    try {
-        const {
-            organizationId,
-            classDate,
-            location,
-            classType,
-            notes
-        } = req.body;
-        const instructorId = req.user.userid;
-
-        const result = await pool.query(`
-            INSERT INTO scheduledclasses (
-                instructorid,
-                organizationid,
-                classdate,
-                location,
-                classtype,
-                notes,
-                status
-            ) VALUES ($1, $2, $3, $4, $5, $6, 'Scheduled')
-            RETURNING *
-        `, [instructorId, organizationId, classDate, location, classType, notes]);
-
-        res.json({ success: true, message: 'Class scheduled successfully' });
-    } catch (error) {
-        console.error('Error scheduling class:', error);
-        res.status(500).json({ success: false, message: 'Failed to schedule class' });
-    }
-});
+// Scheduled Classes Endpoints (Corrected for Instructor Portal) (MOVED TO routes/instructors.js)
+// app.get('/api/instructor/classes', authenticateToken, async (req, res) => {
+//     // ... (removed code) ...
+// });
+// 
+// // This POST was likely incorrect or unused, also moved/removed implicitly
+// app.post('/api/instructor/classes', authenticateToken, async (req, res) => {
+//     // ... (removed code) ...
+// });
 
 // --- Course Types Endpoint ---
 app.get('/api/course-types', async (req, res) => {

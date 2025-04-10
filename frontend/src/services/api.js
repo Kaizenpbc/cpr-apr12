@@ -441,6 +441,39 @@ export const emailInvoice = async (invoiceId) => {
     }
 };
 
+// Accounting: Get Payments for a specific Invoice
+export const getInvoicePayments = async (invoiceId) => {
+    console.log(`[API Service] Fetching payments for invoice ${invoiceId}...`);
+    try {
+        const response = await api.get(`/accounting/invoices/${invoiceId}/payments`);
+        // Expects { success: true, payments: [...] }
+        if (response.success) {
+            return response.payments; // Return the array of payments
+        } else {
+             throw new Error(response.message || 'Failed to fetch payments via API.');
+        }
+    } catch (error) {
+        console.error(`[API Service] Error fetching payments for invoice ${invoiceId}:`, error);
+        if (error instanceof Error) throw error;
+        throw new Error('Failed to fetch payment history on the server.');
+    }
+};
+
+// Accounting: Record Payment for an Invoice
+export const recordInvoicePayment = async (invoiceId, paymentData) => {
+    console.log(`[API Service] Recording payment for invoice ${invoiceId}:`, paymentData);
+    try {
+        // POST request with payment data in the body
+        const response = await api.post(`/accounting/invoices/${invoiceId}/payments`, paymentData); 
+        // Expect { success: true, message: ..., newStatus: ... }
+        return response;
+    } catch (error) {
+        console.error(`[API Service] Error recording payment for invoice ${invoiceId}:`, error);
+        if (error instanceof Error) throw error;
+        throw new Error('Failed to record payment on the server.');
+    }
+};
+
 // === NEW SuperAdmin Functions ===
 
 // --- Organization Management (SuperAdmin) ---

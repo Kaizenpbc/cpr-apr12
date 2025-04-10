@@ -139,9 +139,24 @@ CREATE TABLE Invoices (
     PaymentStatus VARCHAR(50) NOT NULL DEFAULT 'Pending'
         CHECK (PaymentStatus IN ('Pending', 'Paid', 'Overdue')),
     DueDate DATE NOT NULL,
+    EmailSentAt TIMESTAMP NULL, -- Added column to track email sending
     CreatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UpdatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (CourseID) REFERENCES Courses(CourseID) ON DELETE CASCADE
+);
+
+-- Create Payments table to track individual payments against invoices
+CREATE TABLE Payments (
+    PaymentID SERIAL PRIMARY KEY,
+    InvoiceID INT NOT NULL,
+    PaymentDate DATE NOT NULL,
+    AmountPaid DECIMAL(10, 2) NOT NULL,
+    PaymentMethod VARCHAR(50), -- e.g., 'Check', 'EFT', 'Credit Card'
+    ReferenceNumber VARCHAR(100), -- e.g., Check number, transaction ID
+    Notes TEXT,
+    RecordedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    -- Optional: Could add RecordedByUserID referencing Users(UserID)
+    FOREIGN KEY (InvoiceID) REFERENCES Invoices(InvoiceID) ON DELETE CASCADE
 );
 
 -- Create InstructorAvailability table (Restored)
