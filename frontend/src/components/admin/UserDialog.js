@@ -159,11 +159,13 @@ function UserDialog({ open, onClose, onSave, user, existingUsers = [] }) {
             }
 
             if (isEditMode) {
-                // await api.updateUser(user.userid, dataToSend);
-                 alert('Update user functionality not implemented yet.'); // Placeholder
+                console.log('[UserDialog] Calling updateUser with ID:', user.userid, 'Data:', dataToSend);
+                await api.updateUser(user.userid, dataToSend);
             } else {
+                console.log('[UserDialog] Calling addUser with Data:', dataToSend);
                 await api.addUser(dataToSend);
             }
+            console.log('[UserDialog] Save successful, calling onSave and onClose.');
             onSave(); 
             onClose(); 
         } catch (err) {

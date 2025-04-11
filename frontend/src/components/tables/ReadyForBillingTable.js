@@ -15,15 +15,7 @@ import {
 } from '@mui/material';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
-
-const formatDate = (dateString) => {
-    if (!dateString) return '-';
-    try {
-        return new Date(dateString).toLocaleDateString(); 
-    } catch (e) {
-        return 'Invalid Date';
-    }
-};
+import { formatDate } from '../../utils/formatters';
 
 const ReadyForBillingTable = ({ courses, onCreateInvoiceClick, onReviewClick }) => {
 

@@ -22,6 +22,7 @@ import {
 import {
     ReceiptLong as BillingIcon, 
     RequestQuote as ReceivablesIcon, // Example icon
+    History as HistoryIcon, // Add History icon
     Logout as LogoutIcon,
 } from '@mui/icons-material';
 import ReadyForBillingTable from '../tables/ReadyForBillingTable'; // Import the table
@@ -30,6 +31,7 @@ import AccountsReceivableTable from '../tables/AccountsReceivableTable'; // Impo
 import ViewStudentsDialog from '../dialogs/ViewStudentsDialog'; 
 import InvoiceDetailDialog from '../dialogs/InvoiceDetailDialog'; // Import Invoice Detail Dialog
 import RecordPaymentDialog from '../dialogs/RecordPaymentDialog'; // Import Record Payment Dialog
+import TransactionHistoryView from '../views/TransactionHistoryView'; // Import the new view
 
 const drawerWidth = 240;
 
@@ -245,6 +247,9 @@ const AccountingPortal = () => {
                         onEmailInvoiceClick={handleEmailInvoiceClick} 
                     />
                 );
+            case 'history': // Add case for the new view
+                 console.log('[renderSelectedView: history]');
+                 return <TransactionHistoryView />;
             default:
                 return <Typography>Select a view</Typography>;
         }
@@ -324,6 +329,27 @@ const AccountingPortal = () => {
                         >
                             <ListItemIcon sx={{ color: 'inherit' }}><ReceivablesIcon /></ListItemIcon>
                             <ListItemText primary="Accounts Receivable" />
+                        </ListItem>
+                        {/* Invoice History Item - NEW */}
+                        <ListItem 
+                            component="div"
+                            selected={selectedView === 'history'}
+                            onClick={() => setSelectedView('history')}
+                             sx={{ // Apply styling 
+                                cursor: 'pointer', 
+                                py: 1.5, 
+                                backgroundColor: selectedView === 'history' ? 'primary.light' : 'transparent',
+                                color: selectedView === 'history' ? 'primary.contrastText' : 'inherit',
+                                '& .MuiListItemIcon-root': {
+                                    color: selectedView === 'history' ? 'primary.contrastText' : 'inherit',
+                                },
+                                '&:hover': {
+                                    backgroundColor: selectedView === 'history' ? 'primary.main' : 'action.hover',
+                                }
+                            }}
+                        >
+                            <ListItemIcon sx={{ color: 'inherit' }}><HistoryIcon /></ListItemIcon>
+                            <ListItemText primary="Invoice History" />
                         </ListItem>
                         <Divider sx={{ my: 1 }} />
                          {/* Logout Item - Apply Styles */}

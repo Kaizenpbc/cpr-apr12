@@ -143,13 +143,16 @@ router.post('/create-invoice/:courseId', authenticateToken, checkAccountingAcces
 router.get('/invoices', authenticateToken, checkAccountingAccess, async (req, res) => {
     console.log('[API GET /accounting/invoices] Request received');
     try {
-        // Fetch necessary fields, including DueDate and PaymentStatus
+        // Fetch necessary fields, join Payments table, calculate paid amount
         const result = await pool.query(`
             SELECT 
                 i.InvoiceID, i.InvoiceNumber, i.InvoiceDate, i.DueDate, i.Amount, i.PaymentStatus, 
                 c.CourseNumber, 
                 o.OrganizationName,
-                i.EmailSentAt 
+                o.OrganizationID, 
+                i.EmailSentAt,
+                -- Calculate total paid amount for each invoice
+                COALESCE((SELECT SUM(p.AmountPaid) FROM Payments p WHERE p.InvoiceID = i.InvoiceID), 0) as "paidToDate"
             FROM Invoices i
             JOIN Courses c ON i.CourseID = c.CourseID
             JOIN Organizations o ON c.OrganizationID = o.OrganizationID
@@ -158,11 +161,15 @@ router.get('/invoices', authenticateToken, checkAccountingAccess, async (req, re
         
         const invoices = result.rows;
         const today = new Date();
-        today.setHours(0, 0, 0, 0); // Normalize today to the start of the day for consistent comparison
+        today.setHours(0, 0, 0, 0); 
 
-        // Calculate aging bucket for each invoice
-        const invoicesWithAging = invoices.map(invoice => {
-            let agingBucket = 'Paid'; // Default for paid invoices
+        // Calculate aging bucket and balance due for each invoice
+        const invoicesWithDetails = invoices.map(invoice => {
+            let agingBucket = 'Paid'; 
+            const invoiceAmount = parseFloat(invoice.amount || 0);
+            const paidToDate = parseFloat(invoice.paidToDate || 0); // Use the value from the query
+            const balanceDue = invoiceAmount - paidToDate;
+
             if (invoice.paymentstatus?.toLowerCase() !== 'paid') {
                 try {
                     const dueDate = new Date(invoice.duedate);
@@ -190,15 +197,49 @@ router.get('/invoices', authenticateToken, checkAccountingAccess, async (req, re
                     agingBucket = 'Error'; // Indicate date processing error
                 }
             }
-            return { ...invoice, agingBucket }; // Add the calculated bucket
+            // Return object including calculated fields
+            return { 
+                ...invoice, 
+                paidToDate: paidToDate, // Ensure it's included
+                balanceDue: balanceDue,
+                agingBucket: agingBucket
+            }; 
         });
 
-        console.log('[API GET /accounting/invoices] Returning invoices with aging.');
-        res.json({ success: true, invoices: invoicesWithAging }); // Send modified array
+        console.log('[API GET /accounting/invoices] Returning invoices with aging and payment details.');
+        res.json({ success: true, invoices: invoicesWithDetails }); // Send modified array
 
     } catch (err) {
-        console.error("[API GET /accounting/invoices] Error:", err);
-        res.status(500).json({ success: false, message: 'Failed to fetch invoices.' });
+        // Add check for Payments table not existing in catch block too
+         if (err.code === '42P01') { 
+            console.warn(`[API GET /invoices] Payments table likely does not exist yet. Error: ${err.message}. Returning invoices without payment data.`);
+            // Try to return data without payment info if Payments table fails
+            try {
+                 const result = await pool.query(`
+                    SELECT 
+                        i.InvoiceID, i.InvoiceNumber, i.InvoiceDate, i.DueDate, i.Amount, i.PaymentStatus, 
+                        c.CourseNumber, o.OrganizationName, o.OrganizationID, i.EmailSentAt
+                    FROM Invoices i
+                    JOIN Courses c ON i.CourseID = c.CourseID
+                    JOIN Organizations o ON c.OrganizationID = o.OrganizationID
+                    ORDER BY i.InvoiceDate DESC 
+                 `);
+                 // Calculate aging, assume paidToDate is 0
+                  const invoices = result.rows;
+                  const today = new Date(); today.setHours(0, 0, 0, 0);
+                  const invoicesWithAging = invoices.map(invoice => { /* ... aging logic ... */ 
+                       const invoiceAmount = parseFloat(invoice.amount || 0);
+                       return { ...invoice, paidToDate: 0, balanceDue: invoiceAmount, agingBucket };
+                  });
+                 res.json({ success: true, invoices: invoicesWithAging });
+            } catch (fallbackErr) {
+                console.error("[API GET /accounting/invoices] Error during fallback query:", fallbackErr);
+                res.status(500).json({ success: false, message: 'Failed to fetch invoices.' });
+            }
+        } else {
+            console.error("[API GET /accounting/invoices] Error:", err);
+            res.status(500).json({ success: false, message: 'Failed to fetch invoices.' });
+        }
     }
 });
 
@@ -450,6 +491,236 @@ router.post('/invoices/:invoiceId/payments', authenticateToken, checkAccountingA
         }
     } finally {
         client.release();
+    }
+});
+
+// --- Organization Detail Viewpoints ---
+
+// GET /api/accounting/organizations/:orgId/details - Fetch basic org info
+router.get('/organizations/:orgId/details', authenticateToken, checkAccountingAccess, async (req, res) => {
+    const { orgId } = req.params;
+    console.log(`[API GET /accounting/organizations/${orgId}/details] Request received`);
+
+    if (isNaN(parseInt(orgId, 10))) {
+        return res.status(400).json({ success: false, message: 'Invalid Organization ID format.' });
+    }
+
+    try {
+        const result = await pool.query(
+            `SELECT OrganizationID, OrganizationName, ContactName, ContactEmail, ContactPhone, 
+                    AddressStreet, AddressCity, AddressProvince, AddressPostalCode 
+             FROM organizations 
+             WHERE OrganizationID = $1`,
+            [orgId]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'Organization not found.' });
+        }
+
+        res.json({ success: true, details: result.rows[0] });
+
+    } catch (err) {
+        console.error(`[API GET /accounting/organizations/${orgId}/details] Error:`, err);
+        res.status(500).json({ success: false, message: 'Failed to fetch organization details.' });
+    }
+});
+
+// GET /api/accounting/organizations/:orgId/courses - Fetch all courses for an org
+router.get('/organizations/:orgId/courses', authenticateToken, checkAccountingAccess, async (req, res) => {
+    const { orgId } = req.params;
+    // Optional: Add filtering based on query params like ?status=Scheduled or ?startDate=...&endDate=...
+    console.log(`[API GET /accounting/organizations/${orgId}/courses] Request received`);
+
+    if (isNaN(parseInt(orgId, 10))) {
+        return res.status(400).json({ success: false, message: 'Invalid Organization ID format.' });
+    }
+
+    try {
+        // Query similar to the one used in OrganizationPortal, but without status filter initially
+        const result = await pool.query(`
+            SELECT 
+                c.CourseID, c.CreatedAt AS SystemDate, c.CourseNumber, c.DateRequested, c.DateScheduled, 
+                c.Location, c.Status, c.Notes, c.StudentsRegistered,
+                ct.CourseTypeName,
+                o.OrganizationName, -- Already know OrgID, but include for consistency
+                CONCAT(u.FirstName, ' ', u.LastName) as InstructorName,
+                -- Calculate StudentsAttendance count
+                (SELECT COUNT(*) FROM Students s WHERE s.CourseID = c.CourseID AND s.Attendance = TRUE) as studentsattendance
+            FROM Courses c
+            JOIN CourseTypes ct ON c.CourseTypeID = ct.CourseTypeID
+            JOIN Organizations o ON c.OrganizationID = o.OrganizationID
+            LEFT JOIN Instructors i ON c.InstructorID = i.InstructorID
+            LEFT JOIN Users u ON i.UserID = u.UserID
+            WHERE c.OrganizationID = $1
+            ORDER BY c.DateRequested DESC -- Or DateScheduled, or Status
+        `, [orgId]);
+        
+        // Parse count
+        const courses = result.rows.map(course => ({
+            ...course,
+            studentsattendance: parseInt(course.studentsattendance, 10)
+        }));
+
+        res.json({ success: true, courses: courses });
+    } catch (err) {
+        console.error(`[API GET /accounting/organizations/${orgId}/courses] Error:`, err);
+        res.status(500).json({ success: false, message: 'Failed to fetch organization courses.' });
+    }
+});
+
+// GET /api/accounting/organizations/:orgId/invoices - Fetch all invoices for an org
+router.get('/organizations/:orgId/invoices', authenticateToken, checkAccountingAccess, async (req, res) => {
+    const { orgId } = req.params;
+    console.log(`[API GET /accounting/organizations/${orgId}/invoices] Request received`);
+
+     if (isNaN(parseInt(orgId, 10))) {
+        return res.status(400).json({ success: false, message: 'Invalid Organization ID format.' });
+    }
+
+    try {
+        // Query similar to GET /invoices, but filtered by OrganizationID
+        const result = await pool.query(`
+            SELECT 
+                i.InvoiceID, i.InvoiceNumber, i.InvoiceDate, i.DueDate, i.Amount, i.PaymentStatus, 
+                c.CourseNumber, 
+                o.OrganizationName,
+                o.OrganizationID,
+                i.EmailSentAt
+            FROM Invoices i
+            JOIN Courses c ON i.CourseID = c.CourseID
+            JOIN Organizations o ON c.OrganizationID = o.OrganizationID
+            WHERE o.OrganizationID = $1 -- Filter by Org ID
+            ORDER BY i.InvoiceDate DESC
+        `, [orgId]);
+        
+        const invoices = result.rows; // Already includes aging calculation from general endpoint logic? NO - need to add it here too.
+        const today = new Date();
+        today.setHours(0, 0, 0, 0); 
+
+        // Calculate aging bucket for each invoice FOR THIS ORG
+        const invoicesWithAging = invoices.map(invoice => {
+            let agingBucket = 'Paid'; 
+            if (invoice.paymentstatus?.toLowerCase() !== 'paid') {
+                try {
+                    const dueDate = new Date(invoice.duedate);
+                    dueDate.setHours(0, 0, 0, 0); 
+                    if (dueDate >= today) {
+                        agingBucket = 'Current';
+                    } else {
+                        const diffTime = today - dueDate; 
+                        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                        if (diffDays <= 30) agingBucket = '1-30 Days';
+                        else if (diffDays <= 60) agingBucket = '31-60 Days';
+                        else if (diffDays <= 90) agingBucket = '61-90 Days';
+                        else agingBucket = '90+ Days';
+                    }
+                } catch (e) {
+                     agingBucket = 'Error'; 
+                }
+            }
+            return { ...invoice, agingBucket };
+        });
+
+        res.json({ success: true, invoices: invoicesWithAging });
+
+    } catch (err) {
+        console.error(`[API GET /accounting/organizations/${orgId}/invoices] Error:`, err);
+        res.status(500).json({ success: false, message: 'Failed to fetch organization invoices.' });
+    }
+});
+
+// GET /api/accounting/organizations/:orgId/payments - Fetch all payments for an org
+router.get('/organizations/:orgId/payments', authenticateToken, checkAccountingAccess, async (req, res) => {
+    const { orgId } = req.params;
+    console.log(`[API GET /accounting/organizations/${orgId}/payments] Request received`);
+
+     if (isNaN(parseInt(orgId, 10))) {
+        return res.status(400).json({ success: false, message: 'Invalid Organization ID format.' });
+    }
+
+    try {
+        // Query Payments, joining through Invoices and Courses to filter by OrgID
+        const paymentResult = await pool.query(`
+            SELECT 
+                p.PaymentID, p.PaymentDate, p.AmountPaid, p.PaymentMethod, p.ReferenceNumber, p.Notes, p.RecordedAt,
+                i.InvoiceNumber, c.CourseNumber
+            FROM Payments p
+            JOIN Invoices i ON p.InvoiceID = i.InvoiceID
+            JOIN Courses c ON i.CourseID = c.CourseID
+            WHERE c.OrganizationID = $1
+            ORDER BY p.PaymentDate DESC, p.RecordedAt DESC 
+        `, [orgId]);
+
+        console.log(`[API GET /accounting/organizations/${orgId}/payments] Found ${paymentResult.rows.length} payments.`);
+        res.json({ success: true, payments: paymentResult.rows });
+
+    } catch (err) {
+        if (err.code === '42P01') { // Payments table might not exist yet
+            console.warn(`[API GET /org-payments] Payments table likely does not exist yet. Error: ${err.message}`);
+            return res.json({ success: true, payments: [] }); 
+        } else {
+            console.error(`[API GET /accounting/organizations/${orgId}/payments] Error:`, err);
+            res.status(500).json({ success: false, message: 'Failed to fetch organization payment history.' });
+        }
+    }
+});
+
+// GET /api/accounting/organizations/:orgId/financial-summary - Calculate financial totals for an org
+router.get('/organizations/:orgId/financial-summary', authenticateToken, checkAccountingAccess, async (req, res) => {
+    const { orgId } = req.params;
+    console.log(`[API GET /accounting/organizations/${orgId}/financial-summary] Request received`);
+
+     if (isNaN(parseInt(orgId, 10))) {
+        return res.status(400).json({ success: false, message: 'Invalid Organization ID format.' });
+    }
+
+    try {
+        // Calculate total invoiced amount
+        const invoicedRes = await pool.query(`
+            SELECT COALESCE(SUM(i.Amount), 0) as totalInvoiced
+            FROM Invoices i
+            JOIN Courses c ON i.CourseID = c.CourseID
+            WHERE c.OrganizationID = $1
+        `, [orgId]);
+        const totalInvoiced = parseFloat(invoicedRes.rows[0].totalinvoiced);
+
+        // Calculate total paid amount
+        const paidRes = await pool.query(`
+            SELECT COALESCE(SUM(p.AmountPaid), 0) as totalPaid
+            FROM Payments p
+            JOIN Invoices i ON p.InvoiceID = i.InvoiceID
+            JOIN Courses c ON i.CourseID = c.CourseID
+            WHERE c.OrganizationID = $1
+        `, [orgId]);
+        const totalPaid = parseFloat(paidRes.rows[0].totalpaid);
+
+        const balanceDue = totalInvoiced - totalPaid;
+
+        const summary = {
+            totalInvoiced: totalInvoiced,
+            totalPaid: totalPaid,
+            balanceDue: balanceDue
+        };
+        console.log(`[API GET /accounting/organizations/${orgId}/financial-summary] Summary:`, summary);
+        res.json({ success: true, summary: summary });
+
+    } catch (err) {
+         if (err.code === '42P01') { // Payments table might not exist yet
+            console.warn(`[API GET /org-summary] Payments table likely does not exist yet. Error: ${err.message}. Returning 0 paid.`);
+            // Try to return invoiced amount at least
+            try {
+                const invoicedRes = await pool.query(`SELECT COALESCE(SUM(i.Amount), 0) as totalInvoiced FROM Invoices i JOIN Courses c ON i.CourseID = c.CourseID WHERE c.OrganizationID = $1`, [orgId]);
+                const totalInvoiced = parseFloat(invoicedRes.rows[0].totalinvoiced);
+                 res.json({ success: true, summary: { totalInvoiced: totalInvoiced, totalPaid: 0, balanceDue: totalInvoiced } });
+            } catch (innerErr) {
+                 console.error(`[API GET /accounting/organizations/${orgId}/financial-summary] Error even fetching invoiced amount:`, innerErr);
+                 res.status(500).json({ success: false, message: 'Failed to fetch organization financial summary.' });
+            }
+        } else {
+            console.error(`[API GET /accounting/organizations/${orgId}/financial-summary] Error:`, err);
+            res.status(500).json({ success: false, message: 'Failed to fetch organization financial summary.' });
+        }
     }
 });
 

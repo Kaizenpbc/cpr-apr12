@@ -105,19 +105,24 @@ router.get('/availability', authenticateToken, async (req, res) => {
 
         // 2. Fetch all dates where this instructor has a scheduled OR completed course
         const courseDatesResult = await pool.query(
-            `SELECT DISTINCT TO_CHAR(DateScheduled, 'YYYY-MM-DD') as scheduled_date 
+            `SELECT DISTINCT TO_CHAR(DateScheduled, 'YYYY-MM-DD') as course_date 
              FROM Courses 
              WHERE InstructorID = $1 AND Status IN ('Scheduled', 'Completed') AND DateScheduled IS NOT NULL`,
             [instructorId]
         );
-        const courseDatesSet = new Set(courseDatesResult.rows.map(row => row.scheduled_date));
+        const courseDatesSet = new Set(courseDatesResult.rows.map(row => row.course_date));
         console.log(`[API GET /instructor/availability] Found ${courseDatesSet.size} course dates for InstructorID: ${instructorId}:`, courseDatesSet);
 
         // 3. Filter available dates: keep only those NOT matching a course date
         const trulyAvailableDates = availableDates.filter(date => {
             try {
-                const dateStr = new Date(date).toISOString().split('T')[0];
-                return !courseDatesSet.has(dateStr);
+                // Explicitly format the availability date to YYYY-MM-DD for comparison
+                const availDateStr = new Date(date).toISOString().split('T')[0];
+                const keepDate = !courseDatesSet.has(availDateStr);
+                if (!keepDate) {
+                     console.log(`[API GET /instructor/availability] Filtering out available date ${availDateStr} because a course exists.`);
+                }
+                return keepDate;
             } catch (e) {
                 console.error('Error parsing date during availability filtering:', date, e);
                 return false; // Exclude potentially invalid dates
@@ -207,9 +212,51 @@ router.delete('/availability/:date', authenticateToken, async (req, res) => {
     }
 });
 
+// GET /api/instructor/completed-classes - Fetch completed courses for the logged-in instructor
+router.get('/completed-classes', authenticateToken, async (req, res) => {
+    if (!req.user) {
+        return res.status(401).json({ success: false, message: 'Authentication required.' });
+    }
+    const userId = req.user.userid;
+    console.log(`[API GET /instructor/completed-classes] Request received for UserID: ${userId}`);
+
+    try {
+        const instructorId = await getInstructorId(userId);
+        if (!instructorId) {
+            return res.status(403).json({ success: false, message: 'User is not an instructor.' });
+        }
+        console.log(`[API GET /instructor/completed-classes] Found InstructorID: ${instructorId}`);
+
+        // Query courses, join necessary tables, filter by instructor and status, calculate attendance
+        const result = await pool.query(`
+            SELECT 
+                c.CourseID, c.DateScheduled, c.CourseNumber, c.Location, c.Status, 
+                o.OrganizationName, ct.CourseTypeName, c.StudentsRegistered, c.Notes,
+                -- Calculate attendance count
+                (SELECT COUNT(*) FROM Students s WHERE s.CourseID = c.CourseID AND s.Attendance = TRUE) as studentsattendance
+            FROM Courses c
+            JOIN Organizations o ON c.OrganizationID = o.OrganizationID
+            JOIN CourseTypes ct ON c.CourseTypeID = ct.CourseTypeID
+            WHERE c.InstructorID = $1 AND c.Status = 'Completed'
+            ORDER BY c.DateScheduled DESC
+        `, [instructorId]);
+        
+         // Parse count
+        const courses = result.rows.map(course => ({
+            ...course,
+            studentsattendance: parseInt(course.studentsattendance, 10)
+        }));
+
+        console.log(`[API GET /instructor/completed-classes] Found ${courses.length} completed courses.`);
+        res.json({ success: true, courses: courses });
+
+    } catch (err) {
+        console.error(`[API GET /instructor/completed-classes] Error fetching completed classes for UserID ${userId}:`, err);
+        res.status(500).json({ success: false, message: 'Failed to fetch completed classes' });
+    }
+});
 
 // --- Other Instructor Routes --- 
 // TODO: Move routes for today's classes (GET /todays-classes) from server.js if desired
-// TODO: Move route for completed classes (GET /completed-classes) from server.js if desired
 
 module.exports = router; 

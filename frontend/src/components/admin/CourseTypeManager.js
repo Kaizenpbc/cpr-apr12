@@ -112,7 +112,7 @@ function CourseTypeManager() {
                                 <TableCell sx={{ fontWeight: 'bold' }}>Description</TableCell>
                                 <TableCell sx={{ fontWeight: 'bold' }}>Duration (hrs)</TableCell>
                                 <TableCell sx={{ fontWeight: 'bold' }}>Max Students</TableCell>
-                                <TableCell sx={{ fontWeight: 'bold' }}>Actions</TableCell>
+                                <TableCell align="center" sx={{ fontWeight: 'bold' }}>Actions</TableCell>
                             </TableRow>
                         </TableHead>
                         <TableBody>

@@ -110,13 +110,10 @@ function OrganizationManager() {
                             <TableRow>
                                 <TableCell sx={{ fontWeight: 'bold' }}>ID</TableCell>
                                 <TableCell sx={{ fontWeight: 'bold' }}>Organization Name</TableCell>
-                                <TableCell sx={{ fontWeight: 'bold' }}>Contact</TableCell>
-                                <TableCell sx={{ fontWeight: 'bold' }}>Contact Email</TableCell>
-                                <TableCell sx={{ fontWeight: 'bold' }}>Contact Phone</TableCell>
+                                <TableCell sx={{ fontWeight: 'bold' }}>Contact Name</TableCell>
+                                <TableCell sx={{ fontWeight: 'bold' }}>Email</TableCell>
+                                <TableCell sx={{ fontWeight: 'bold' }}>Phone</TableCell>
                                 <TableCell sx={{ fontWeight: 'bold' }}>Address</TableCell>
-                                <TableCell sx={{ fontWeight: 'bold' }}>CEO Name</TableCell>
-                                <TableCell sx={{ fontWeight: 'bold' }}>CEO Email</TableCell>
-                                <TableCell sx={{ fontWeight: 'bold' }}>CEO Phone</TableCell>
                                 <TableCell sx={{ fontWeight: 'bold' }}>Actions</TableCell>
                             </TableRow>
                         </TableHead>
@@ -134,9 +131,6 @@ function OrganizationManager() {
                                         <TableCell>{org.contactemail || '-'}</TableCell>
                                         <TableCell>{formatPhone(org.contactphone)}</TableCell>
                                         <TableCell>{`${org.addressstreet || ''}${org.addressstreet && (org.addresscity || org.addressprovince) ? ', ' : ''}${org.addresscity || ''}${org.addresscity && org.addressprovince ? ', ' : ''}${org.addressprovince || ''}` || '-'}</TableCell>
-                                        <TableCell>{org.ceoname || '-'}</TableCell>
-                                        <TableCell>{org.ceoemail || '-'}</TableCell>
-                                        <TableCell>{formatPhone(org.ceophone)}</TableCell>
                                         <TableCell>
                                             <IconButton size="small" onClick={() => handleEditOpen(org)} title="Edit">
                                                 <EditIcon fontSize="small" />

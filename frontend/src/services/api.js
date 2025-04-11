@@ -474,6 +474,88 @@ export const recordInvoicePayment = async (invoiceId, paymentData) => {
     }
 };
 
+// --- Organization Detail View APIs ---
+
+export const getOrganizationDetails = async (orgId) => {
+    console.log(`[API Service] Fetching details for organization ${orgId}...`);
+    try {
+        const response = await api.get(`/accounting/organizations/${orgId}/details`);
+        if (response.success) {
+            return response.details;
+        } else {
+            throw new Error(response.message || 'Failed to fetch organization details.');
+        }
+    } catch (error) {
+        console.error(`[API Service] Error fetching details for org ${orgId}:`, error);
+        if (error instanceof Error) throw error;
+        throw new Error('Failed to fetch organization details on the server.');
+    }
+};
+
+export const getOrganizationCoursesAdmin = async (orgId) => {
+    console.log(`[API Service] Fetching all courses for organization ${orgId}...`);
+    try {
+        const response = await api.get(`/accounting/organizations/${orgId}/courses`);
+        if (response.success) {
+            return response.courses;
+        } else {
+            throw new Error(response.message || 'Failed to fetch organization courses.');
+        }
+    } catch (error) {
+        console.error(`[API Service] Error fetching courses for org ${orgId}:`, error);
+        if (error instanceof Error) throw error;
+        throw new Error('Failed to fetch organization courses on the server.');
+    }
+};
+
+export const getOrganizationInvoices = async (orgId) => {
+    console.log(`[API Service] Fetching invoices for organization ${orgId}...`);
+    try {
+        const response = await api.get(`/accounting/organizations/${orgId}/invoices`);
+        if (response.success) {
+            return response.invoices;
+        } else {
+            throw new Error(response.message || 'Failed to fetch organization invoices.');
+        }
+    } catch (error) {
+        console.error(`[API Service] Error fetching invoices for org ${orgId}:`, error);
+        if (error instanceof Error) throw error;
+        throw new Error('Failed to fetch organization invoices on the server.');
+    }
+};
+
+export const getOrganizationPayments = async (orgId) => {
+    console.log(`[API Service] Fetching payments for organization ${orgId}...`);
+    try {
+        const response = await api.get(`/accounting/organizations/${orgId}/payments`);
+        if (response.success) {
+            return response.payments;
+        } else {
+            throw new Error(response.message || 'Failed to fetch organization payments.');
+        }
+    } catch (error) {
+        console.error(`[API Service] Error fetching payments for org ${orgId}:`, error);
+        if (error instanceof Error) throw error;
+        throw new Error('Failed to fetch organization payments on the server.');
+    }
+};
+
+export const getOrganizationFinancialSummary = async (orgId) => {
+    console.log(`[API Service] Fetching financial summary for organization ${orgId}...`);
+    try {
+        const response = await api.get(`/accounting/organizations/${orgId}/financial-summary`);
+        if (response.success) {
+            return response.summary;
+        } else {
+            throw new Error(response.message || 'Failed to fetch organization financial summary.');
+        }
+    } catch (error) {
+        console.error(`[API Service] Error fetching summary for org ${orgId}:`, error);
+        if (error instanceof Error) throw error;
+        throw new Error('Failed to fetch organization financial summary on the server.');
+    }
+};
+
 // === NEW SuperAdmin Functions ===
 
 // --- Organization Management (SuperAdmin) ---
@@ -512,7 +594,24 @@ export const addOrganization = async (orgData) => {
     }
 };
 
-// Add getOrganizationById, updateOrganization, deleteOrganization later
+// Update Organization (SuperAdmin)
+export const updateOrganization = async (id, orgData) => {
+    console.log(`[API Service] Updating organization ${id}:`, orgData);
+    try {
+        const response = await api.put(`/organizations/${id}`, orgData);
+        if (response && response.success) {
+            return response.organization; // Return the updated org object
+        } else {
+            throw new Error(response?.message || 'Failed to update organization');
+        }
+    } catch (error) {
+        console.error(`[API Service] Error updating organization ${id}:`, error);
+        if (error instanceof Error) throw error;
+        throw new Error('Failed to update organization on the server.');
+    }
+};
+
+// Add getOrganizationById, deleteOrganization later
 
 // --- User Management (SuperAdmin) ---
 export const getUsers = async () => {
@@ -551,7 +650,25 @@ export const addUser = async (userData) => {
     }
 };
 
-// Add getUserById, updateUser, deleteUser later
+// Update User (SuperAdmin)
+export const updateUser = async (id, userData) => {
+    console.log(`[API Service] Updating user ${id}:`, userData);
+    try {
+        const response = await api.put(`/users/${id}`, userData);
+        if (response && response.success) {
+            return response.user; // Return the updated user object
+        } else {
+            // Throw the specific error message from backend if available
+            throw new Error(response?.message || 'Failed to update user');
+        }
+    } catch (error) {
+        console.error(`[API Service] Error updating user ${id}:`, error);
+        if (error instanceof Error) throw error;
+        throw new Error('Failed to update user on the server.');
+    }
+};
+
+// Add getUserById, deleteUser later
 
 export const deleteUser = async (id) => {
     console.log(`[API Service] Deleting user ${id}...`);

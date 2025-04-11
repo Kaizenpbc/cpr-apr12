@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Link as RouterLink } from 'react-router-dom';
 import {
     Table,
     TableBody,
@@ -14,7 +15,8 @@ import {
     Chip, // For status visualization
     IconButton, // Added IconButton
     Collapse, // Added Collapse for expansion
-    CircularProgress // Added CircularProgress
+    CircularProgress,
+    Link // Add Link import from MUI (optional, for styling)
 } from '@mui/material';
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown'; // Expand icon
 import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp'; // Collapse icon
@@ -25,29 +27,8 @@ import VisibilityIcon from '@mui/icons-material/Visibility';
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong'; // Used for Billing Queue
 import PaymentIcon from '@mui/icons-material/Payment'; // For Record Payment
 import EmailIcon from '@mui/icons-material/Email'; // For Email Invoice
-
-const formatDate = (dateString) => {
-    if (!dateString) return '-';
-    try {
-        return new Date(dateString).toLocaleDateString(); 
-    } catch (e) {
-        return 'Invalid Date';
-    }
-};
-
-// Function to get color based on payment status
-const getStatusChipColor = (status) => {
-    switch (status?.toLowerCase()) {
-        case 'paid':
-            return 'success';
-        case 'pending':
-            return 'warning';
-        case 'overdue':
-            return 'error';
-        default:
-            return 'default';
-    }
-};
+// Import shared formatters
+import { formatDate, getStatusChipColor } from '../../utils/formatters'; // Correct path
 
 // Component to display within the expanded row
 const PaymentDetails = ({ invoiceId }) => {
@@ -136,6 +117,8 @@ const AccountsReceivableTable = ({
                         <TableCell sx={{ fontWeight: 'bold' }}>Organization</TableCell>
                         <TableCell sx={{ fontWeight: 'bold' }}>Course #</TableCell>
                         <TableCell align="right" sx={{ fontWeight: 'bold' }}>Amount</TableCell>
+                        <TableCell align="right" sx={{ fontWeight: 'bold' }}>Paid To Date</TableCell>
+                        <TableCell align="right" sx={{ fontWeight: 'bold' }}>Balance Due</TableCell>
                         <TableCell align="center" sx={{ fontWeight: 'bold' }}>Payment Status</TableCell>
                         <TableCell sx={{ fontWeight: 'bold' }}>Aging</TableCell>
                         <TableCell sx={{ fontWeight: 'bold' }}>Email Sent</TableCell>
@@ -165,9 +148,19 @@ const AccountsReceivableTable = ({
                                 <TableCell>{invoice.invoicenumber}</TableCell> 
                                 <TableCell>{formatDate(invoice.invoicedate)}</TableCell> 
                                 <TableCell>{formatDate(invoice.duedate)}</TableCell> 
-                                <TableCell>{invoice.organizationname || '-'}</TableCell>
+                                <TableCell>
+                                    <Link 
+                                        component={RouterLink} 
+                                        to={`/accounting/organizations/${invoice.organizationid}`} 
+                                        underline="hover"
+                                    >
+                                        {invoice.organizationname || '-'}
+                                    </Link>
+                                </TableCell>
                                 <TableCell>{invoice.coursenumber || '-'}</TableCell>
                                 <TableCell align="right">{`$${parseFloat(invoice.amount || 0).toFixed(2)}`}</TableCell>
+                                <TableCell align="right">{`$${parseFloat(invoice.paidToDate || 0).toFixed(2)}`}</TableCell>
+                                <TableCell align="right">{`$${parseFloat(invoice.balanceDue || 0).toFixed(2)}`}</TableCell>
                                 <TableCell align="center">
                                     <Chip 
                                         label={invoice.paymentstatus || 'Unknown'} 
@@ -222,7 +215,7 @@ const AccountsReceivableTable = ({
                             </TableRow>
                              {/* Expanded Row for Payment Details */}
                              <TableRow>
-                                <TableCell style={{ paddingBottom: 0, paddingTop: 0 }} colSpan={10}> {/* Adjust colSpan based on total columns */}
+                                <TableCell style={{ paddingBottom: 0, paddingTop: 0 }} colSpan={12}> {/* Adjust colSpan based on total columns */}
                                     <Collapse in={expandedRowId === invoice.invoiceid} timeout="auto" unmountOnExit>
                                         {/* Render PaymentDetails component only when expanded */}
                                         {expandedRowId === invoice.invoiceid && (

@@ -109,18 +109,15 @@ function OrganizationDialog({ open, onClose, onSave, organization }) {
 
         setLoading(true);
         try {
-            // Data sent to API already contains numbers potentially in E.164 format from PhoneInput
-            // No extra normalization needed here if PhoneInput provides E.164 directly
-            const dataToSend = { ...orgData };
-
             if (isEditMode) {
-                // await api.updateOrganization(organization.organizationid, dataToSend);
-                 alert('Update functionality not implemented yet.'); // Placeholder
+                console.log('[OrganizationDialog] Calling updateOrganization with ID:', organization.organizationid, 'Data:', orgData);
+                await api.updateOrganization(organization.organizationid, orgData);
             } else {
-                await api.addOrganization(dataToSend);
+                console.log('[OrganizationDialog] Calling addOrganization with Data:', orgData);
+                await api.addOrganization(orgData);
             }
-            onSave(); 
-            onClose(); 
+            onSave(); // Notify parent to refresh
+            onClose(); // Close dialog
         } catch (err) {
             console.error('Save organization error:', err);
             const message = err.message || 'Failed to save organization.';

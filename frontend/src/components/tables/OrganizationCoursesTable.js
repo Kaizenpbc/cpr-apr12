@@ -18,16 +18,8 @@ import {
 import { visuallyHidden } from '@mui/utils';
 import UploadFileIcon from '@mui/icons-material/UploadFile';
 import VisibilityIcon from '@mui/icons-material/Visibility';
-
-// Helper function to format date string (optional, can format directly)
-const formatDate = (dateString) => {
-    if (!dateString) return '-';
-    try {
-        return new Date(dateString).toLocaleDateString();
-    } catch (e) {
-        return 'Invalid Date';
-    }
-};
+// Correct import path
+import { formatDate, getStatusChipColor } from '../../utils/formatters'; // Correct path
 
 const OrganizationCoursesTable = ({ courses, onUploadStudentsClick, onViewStudentsClick, sortOrder, sortBy, onSortRequest }) => {
 
@@ -100,7 +92,7 @@ const OrganizationCoursesTable = ({ courses, onUploadStudentsClick, onViewStuden
                             <TableCell>
                                 <Chip 
                                     label={course.status || 'Unknown'} 
-                                    color={course.status === 'Pending' ? 'warning' : course.status === 'Completed' ? 'success' : 'default'}
+                                    color={getStatusChipColor(course.status)}
                                 />
                             </TableCell>
                             <TableCell>{course.instructorname || (course.status === 'Pending' ? 'Not Assigned' : '-')}</TableCell>

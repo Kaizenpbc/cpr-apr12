@@ -9,6 +9,7 @@ import OrganizationPortal from './components/portals/OrganizationPortal';
 import CourseAdminPortal from './components/portals/CourseAdminPortal';
 import AccountingPortal from './components/portals/AccountingPortal';
 import SuperAdminPortal from './components/portals/SuperAdminPortal';
+import OrganizationDetailPage from './pages/OrganizationDetailPage';
 
 const theme = createTheme({
   palette: {
@@ -28,6 +29,7 @@ function App() {
         <Router>
           <Routes>
             <Route path="/" element={<Login />} />
+            <Route path="/login" element={<Login />} />
             <Route
               path="/Instructor/*"
               element={
@@ -47,7 +49,7 @@ function App() {
             <Route
               path="/Admin/*"
               element={
-                <PrivateRoute allowedRoles={['Admin']}>
+                <PrivateRoute allowedRoles={['Admin', 'SuperAdmin']}>
                   <CourseAdminPortal />
                 </PrivateRoute>
               }
@@ -55,8 +57,16 @@ function App() {
             <Route
               path="/Accounting/*"
               element={
-                <PrivateRoute allowedRoles={['Accounting']}>
+                <PrivateRoute allowedRoles={['Accounting', 'SuperAdmin']}>
                   <AccountingPortal />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/accounting/organizations/:orgId"
+              element={
+                <PrivateRoute allowedRoles={['Accounting', 'SuperAdmin']}>
+                  <OrganizationDetailPage />
                 </PrivateRoute>
               }
             />

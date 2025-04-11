@@ -17,15 +17,9 @@ import {
 import { visuallyHidden } from '@mui/utils';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
-
-const formatDate = (dateString) => {
-    if (!dateString) return '-';
-    try {
-        return new Date(dateString).toLocaleDateString(); 
-    } catch (e) {
-        return 'Invalid Date';
-    }
-};
+import PaymentIcon from '@mui/icons-material/Payment';
+import EmailIcon from '@mui/icons-material/Email';
+import { formatDate, formatCurrency, getStatusChipColor } from '../../utils/formatters';
 
 const CompletedCoursesTable = ({ courses, onViewStudentsClick, onBillClick, sortOrder, sortBy, onSortRequest }) => {
 
@@ -135,6 +129,7 @@ const CompletedCoursesTable = ({ courses, onViewStudentsClick, onBillClick, sort
                                             color="success"
                                             size="small"
                                             onClick={() => onBillClick(course.courseid)}
+                                            disabled={course.status === 'Billing Ready' || course.status === 'Invoiced'}
                                         >
                                             <ReceiptLongIcon fontSize="small" />
                                         </IconButton>

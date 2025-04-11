@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import * as api from '../../services/api';
@@ -49,6 +49,8 @@ import {
 } from '@mui/icons-material';
 import InstructorArchiveTable from '../tables/InstructorArchiveTable';
 import InstructorDashboard from '../dashboard/InstructorDashboard';
+// Import formatters from utils
+import { formatDate, formatDisplayDate } from '../../utils/formatters';
 
 const drawerWidth = 240;
 
@@ -119,17 +121,23 @@ const InstructorPortal = () => {
                 scheduledClassesResult = classesResponse.classes; 
             }
             
-            // Set state directly with results from API
+            // Set state directly with results from API (availability is pre-filtered)
+            console.log('[loadInitialData] BEFORE setAvailableDates. Raw response:', availabilityResponse);
             // Store availableDates as a Set of YYYY-MM-DD strings for efficient lookup
             const availableDatesSet = new Set();
-            availableDatesResult.forEach(dateStr => {
-                try {
-                    availableDatesSet.add(new Date(dateStr).toISOString().split('T')[0]);
-                } catch (e) {
-                    console.error(`Error parsing availability date from API: ${dateStr}`, e);
-                }
-            });
-            console.log('[loadInitialData] BEFORE setAvailableDates (as Set YYYY-MM-DD). Data:', availableDatesSet);
+            if (Array.isArray(availabilityResponse)) { // Check if it's an array before iterating
+                availabilityResponse.forEach(dateStr => {
+                    try {
+                        // Assume backend sends YYYY-MM-DD or parseable string
+                        availableDatesSet.add(new Date(dateStr).toISOString().split('T')[0]);
+                    } catch (e) {
+                        console.error(`Error parsing availability date from API: ${dateStr}`, e);
+                    }
+                });
+            } else {
+                 console.error('[loadInitialData] Availability response was not an array:', availabilityResponse);
+            }
+            console.log('[loadInitialData] Setting availableDates state (Set):', availableDatesSet);
             setAvailableDates(availableDatesSet); 
             console.log('[loadInitialData] AFTER setAvailableDates.');
             
@@ -396,21 +404,6 @@ const InstructorPortal = () => {
         }
     };
 
-    // Function to format YYYY-MM-DD string to MM/DD/YYYY (or other preferred format)
-    const formatDisplayDate = (isoDateString) => {
-        if (!isoDateString) return 'N/A';
-        try {
-            const parts = isoDateString.split('-');
-            if (parts.length === 3) {
-                // Simple MM/DD/YYYY format
-                return `${parts[1]}/${parts[2]}/${parts[0]}`;
-            }
-            return isoDateString; // Fallback
-        } catch (e) {
-            return 'Invalid Date';
-        }
-    };
-
     const renderAvailabilityCalendar = () => {
         const displayMonth = currentDate.getMonth();
         const displayYear = currentDate.getFullYear();
@@ -488,7 +481,7 @@ const InstructorPortal = () => {
                             new Date(course.datescheduled).toISOString().split('T')[0] === isoDateString
                         );
 
-                        // Determine background color and content - PAST DATE takes precedence over AVAILABLE/HOLIDAY
+                        // Determine background color and content
                         let bgColor = undefined;
                         let dayContent = null;
                         let cellCursor = date ? 'pointer' : 'default';
@@ -497,25 +490,41 @@ const InstructorPortal = () => {
                         if (!date) {
                             bgColor = '#f5f5f5 !important'; // Blank days
                         } else if (isPastDate) {
-                            bgColor = '#fafafa !important'; // Different grey for past dates
-                            dateColor = '#bdbdbd'; // Dim the date number
-                            cellCursor = 'not-allowed'; // Indicate non-clickable
-                        } else if (scheduledClassOnDate) { // Highest functional priority
-                            bgColor = '#e3f2fd !important'; 
-                            dayContent = <ClassIcon fontSize="small" sx={{ alignSelf: 'center', mt: 'auto', color: 'primary.main' }} />;
+                            bgColor = '#fafafa !important'; 
+                            dateColor = '#bdbdbd'; 
+                            cellCursor = 'not-allowed'; 
+                        } else if (scheduledClassOnDate) { // Scheduled takes highest priority
+                            bgColor = '#e3f2fd !important'; // Light blue
+                            const orgName = scheduledClassOnDate.organizationname || '';
+                            const orgAbbr = orgName.substring(0, 3).toUpperCase() || 'N/A';
+                            dayContent = (
+                                <Typography 
+                                    variant="caption" 
+                                    component="span" 
+                                    sx={{
+                                        fontWeight: 'bold', 
+                                        color: 'primary.dark', // Darker blue text
+                                        alignSelf: 'center', 
+                                        mt: 'auto' 
+                                    }}
+                                >
+                                    {orgAbbr}
+                                </Typography>
+                            );
                             dateColor = 'text.primary';
-                        } else if (isHoliday) { // Next priority
+                            cellCursor = 'not-allowed'; // Don't allow changing availability if scheduled
+                        } else if (isHoliday) { // Holiday overrides Available
                             bgColor = '#eeeeee !important'; 
                             dayContent = <Typography variant="caption" component="span" sx={{ fontStyle: 'italic', color: 'text.secondary', alignSelf: 'center', mt: 'auto' }}>H</Typography>; 
                             dateColor = 'text.primary';
-                            cellCursor = 'not-allowed'; // Make holidays non-clickable too
-                        } else if (isAvailable) { // Lowest priority
-                            bgColor = '#fffde7 !important'; 
+                            cellCursor = 'not-allowed'; 
+                        } else if (isAvailable) { // Available is lowest priority
+                            bgColor = '#fffde7 !important'; // Yellow
                             dayContent = <Typography variant="caption" component="span" sx={{ fontWeight: 'bold', color: 'success.main', alignSelf: 'center', mt: 'auto' }}>A</Typography>;
                             dateColor = 'text.primary';
                         }
                         // Highlight today if it doesn't have another specific background
-                        if (isToday && !scheduledClassOnDate && !isHoliday && !isAvailable && !isPastDate) {
+                        if (isToday && !bgColor && !isPastDate) { // Check !bgColor to avoid overriding others
                              bgColor = '#e8f5e9 !important'; 
                              dateColor = 'primary.main';
                         }
@@ -523,8 +532,8 @@ const InstructorPortal = () => {
                         return (
                             <Box 
                                 key={date ? dateString : `blank-${index}`}
-                                // Prevent clicking on holidays or past dates
-                                onClick={() => date && !isHoliday && !isPastDate && handleDateClick(date)}
+                                // Prevent clicking on holidays, past dates, or scheduled dates
+                                onClick={() => date && !isHoliday && !isPastDate && !scheduledClassOnDate && handleDateClick(date)}
                                 sx={{ 
                                     width: 'calc(100% / 7)', 
                                     minHeight: '5em',
@@ -588,44 +597,40 @@ const InstructorPortal = () => {
     const renderMyClasses = () => {
         // Get scheduled classes and AVAILABLE DATES (Set) from state
         const classesToDisplay = Array.isArray(scheduledClasses) ? scheduledClasses : [];
-        // Ensure availableDates is treated as a Set, default to empty Set if needed
         const currentAvailableDatesSet = (availableDates instanceof Set) ? availableDates : new Set(); 
-        // Convert Set to array for mapping
         const availabilityDatesArray = Array.from(currentAvailableDatesSet);
 
-        // <<< ADD LOGGING >>>
-        console.log('[renderMyClasses] Received scheduledClasses state:', classesToDisplay);
-        console.log('[renderMyClasses] Received availableDates state (Set):', currentAvailableDatesSet);
-        console.log('[renderMyClasses] Converted availabilityDates to Array:', availabilityDatesArray);
-        // <<< END LOGGING >>>
+        // Memoize the creation and sorting of the combined list
+        const combinedItems = useMemo(() => {
+            console.log('[renderMyClasses useMemo] Recalculating combinedItems...'); // Log when calculation runs
+            const combined = [
+                ...classesToDisplay.map(course => {
+                    const scheduledIsoDate = course.datescheduled ? new Date(course.datescheduled).toISOString().split('T')[0] : null;
+                    return {
+                        ...course,
+                        type: 'class',
+                        sortDate: new Date(course.datescheduled || 0), 
+                        displayDate: formatDisplayDate(scheduledIsoDate), 
+                        key: `class-${course.courseid}` 
+                    };
+                }),
+                ...availabilityDatesArray.map(dateString => { 
+                    return {
+                        type: 'availability',
+                        sortDate: new Date(dateString), 
+                        displayDate: formatDisplayDate(dateString), 
+                        dateString: dateString,
+                        key: `avail-${dateString}` 
+                    };
+                })
+            ];
+            // Sort combined items by date
+            combined.sort((a, b) => a.sortDate - b.sortDate);
+            return combined;
+        // Only re-run when scheduledClasses or availableDates references change
+        }, [scheduledClasses, availableDates]); 
 
-        // Combine items
-        const combinedItems = [
-            ...classesToDisplay.map(course => {
-                const scheduledIsoDate = course.datescheduled ? new Date(course.datescheduled).toISOString().split('T')[0] : null;
-                return {
-                    ...course,
-                    type: 'class',
-                    sortDate: new Date(course.datescheduled || 0), // Keep for sorting
-                    displayDate: formatDisplayDate(scheduledIsoDate), // Use formatted UTC date string for display
-                    key: `class-${course.courseid}` 
-                };
-            }),
-            ...availabilityDatesArray.map(dateString => { // dateString is YYYY-MM-DD
-                return {
-                    type: 'availability',
-                    sortDate: new Date(dateString), // Keep for sorting
-                    displayDate: formatDisplayDate(dateString), // Use formatted date string for display
-                    dateString: dateString,
-                    key: `avail-${dateString}` 
-                };
-            })
-        ];
-
-        // Sort combined items by date
-        combinedItems.sort((a, b) => a.sortDate - b.sortDate);
-
-        console.log('[renderMyClasses] Combined and sorted items:', combinedItems);
+        console.log('[renderMyClasses] Combined and sorted items (from memo):', combinedItems);
 
         return (
             <TableContainer component={Paper}>

@@ -14,9 +14,19 @@ const checkSuperAdmin = (req, res, next) => {
     next();
 };
 
-// GET all organizations (SuperAdmin only)
-router.get('/', authenticateToken, checkSuperAdmin, async (req, res) => {
-    console.log('[API GET /organizations] Request received');
+// GET all organizations (Allow broader access for lookups, e.g., Accounting, Admin)
+router.get('/', authenticateToken, async (req, res) => {
+    // Add a check for minimum authentication if desired
+    if (!req.user) {
+        return res.status(401).json({ success: false, message: 'Authentication required.' });
+    }
+    // Optionally add role check if not all authenticated users should see the list
+    // const allowedRoles = ['Accounting', 'Admin', 'SuperAdmin'];
+    // if (!allowedRoles.includes(req.user.role)) {
+    //     return res.status(403).json({ success: false, message: 'Forbidden: Insufficient privileges.' });
+    // }
+
+    console.log(`[API GET /organizations] Request received by UserID: ${req.user.userid}, Role: ${req.user.role}`);
     try {
         const result = await pool.query('SELECT * FROM Organizations ORDER BY OrganizationName');
         res.json({ success: true, organizations: result.rows });

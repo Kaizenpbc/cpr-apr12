@@ -133,13 +133,13 @@ function UserManager() {
                             <TableRow>
                                 <TableCell sx={{ fontWeight: 'bold' }}>ID</TableCell>
                                 <TableCell sx={{ fontWeight: 'bold' }}>Username</TableCell>
+                                <TableCell sx={{ fontWeight: 'bold' }}>Role</TableCell>
                                 <TableCell sx={{ fontWeight: 'bold' }}>First Name</TableCell>
                                 <TableCell sx={{ fontWeight: 'bold' }}>Last Name</TableCell>
                                 <TableCell sx={{ fontWeight: 'bold' }}>Email</TableCell>
                                 <TableCell sx={{ fontWeight: 'bold' }}>Phone</TableCell>
                                 <TableCell sx={{ fontWeight: 'bold' }}>Organization</TableCell>
-                                <TableCell sx={{ fontWeight: 'bold' }}>Role</TableCell>
-                                <TableCell sx={{ fontWeight: 'bold' }}>Actions</TableCell>
+                                <TableCell align="center" sx={{ fontWeight: 'bold' }}>Actions</TableCell>
                             </TableRow>
                         </TableHead>
                         <TableBody>
@@ -152,12 +152,12 @@ function UserManager() {
                                     <TableRow key={user.userid} hover>
                                         <TableCell>{user.userid}</TableCell>
                                         <TableCell>{user.username}</TableCell>
+                                        <TableCell>{user.role}</TableCell>
                                         <TableCell>{user.firstname || '-'}</TableCell>
                                         <TableCell>{user.lastname || '-'}</TableCell>
                                         <TableCell>{user.email || '-'}</TableCell>
                                         <TableCell>{formatPhone(user.phone)}</TableCell>
                                         <TableCell>{user.organizationname || 'N/A'}</TableCell>
-                                        <TableCell>{user.role}</TableCell>
                                         <TableCell>
                                             <IconButton size="small" onClick={() => handleEditOpen(user)} title="Edit">
                                                 <EditIcon fontSize="small" />

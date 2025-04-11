@@ -419,13 +419,15 @@ app.get('/api/admin/instructor-dashboard', authenticateToken, async (req, res) =
         instructors.forEach(inst => {
             // Add availability slots
             availability.filter(avail => avail.instructorid === inst.instructorid).forEach(avail => {
-                // Check if a course is scheduled for this instructor on this date
-                const scheduledCourse = courses.find(course => 
+                // Check if ANY course (Scheduled OR Completed) exists for this instructor on this date
+                const courseOnDate = courses.find(course => 
                     course.instructorid === inst.instructorid && 
+                    course.datescheduled && // Ensure course has a date
                     new Date(course.datescheduled).toDateString() === new Date(avail.availabledate).toDateString()
                 );
 
-                if (!scheduledCourse) { // Only add if no course is scheduled for this availability slot
+                // Only add if NO course (scheduled or completed) is found for this availability slot
+                if (!courseOnDate) { 
                     dashboardData.push({
                         id: `avail-${inst.instructorid}-${avail.availabledate}`,
                         instructorName: `${inst.firstname} ${inst.lastname}`,
@@ -528,28 +530,31 @@ app.get('/api/admin/scheduled-courses', authenticateToken, async (req, res) => {
 // --- Admin: Get Completed Courses ---
 app.get('/api/admin/completed-courses', authenticateToken, async (req, res) => {
     try {
+        // Select courses that are Completed, Billing Ready, or already Invoiced
         const result = await pool.query(`
             SELECT 
-                c.CourseID, c.CreatedAt AS SystemDate, c.DateRequested, c.DateScheduled, c.CourseNumber, 
-                c.Location, c.StudentsRegistered, c.Notes, c.Status, 
+                c.CourseID, c.CreatedAt AS SystemDate, c.DateScheduled, c.CourseNumber, 
+                c.Location, c.StudentsRegistered, c.Notes, c.Status,
                 o.OrganizationName,
                 ct.CourseTypeName,
                 CONCAT(u.FirstName, ' ', u.LastName) as InstructorName,
-                COUNT(CASE WHEN s.Attendance = TRUE THEN 1 END) as studentsattendance -- Added Attendance Count
+                (SELECT COUNT(*) FROM Students s WHERE s.CourseID = c.CourseID AND s.Attendance = TRUE) as studentsattendance
             FROM Courses c
             JOIN Organizations o ON c.OrganizationID = o.OrganizationID
             JOIN CourseTypes ct ON c.CourseTypeID = ct.CourseTypeID
             LEFT JOIN Instructors i ON c.InstructorID = i.InstructorID
             LEFT JOIN Users u ON i.UserID = u.UserID
-            LEFT JOIN Students s ON c.CourseID = s.CourseID -- Join Students
-            WHERE c.Status = 'Completed'
-            -- Group by all non-aggregated columns
-            GROUP BY c.CourseID, c.CreatedAt, c.DateRequested, c.DateScheduled, c.CourseNumber, 
-                     c.Location, c.StudentsRegistered, c.Notes, c.Status, o.OrganizationName, 
-                     ct.CourseTypeName, u.FirstName, u.LastName
-            ORDER BY c.DateScheduled DESC -- Or other preferred order
+            WHERE c.Status IN ('Completed', 'Billing Ready', 'Invoiced') -- <<< MODIFIED HERE
+            ORDER BY c.DateScheduled DESC -- Or other preferred sorting
         `);
-        res.json({ success: true, courses: result.rows });
+        
+        // Parse count
+        const courses = result.rows.map(course => ({
+            ...course,
+            studentsattendance: parseInt(course.studentsattendance, 10)
+        }));
+
+        res.json({ success: true, courses: courses });
     } catch (err) {
         console.error("Error fetching completed courses:", err);
         res.status(500).json({ success: false, message: 'Failed to fetch completed courses' });
@@ -1035,17 +1040,26 @@ console.log('[Server Start] Socket.IO connection handler attached.'); // <<< ADD
 
 // --- Global Error Handlers ---
 process.on('uncaughtException', (err, origin) => {
-  console.error(`[FATAL] Uncaught Exception: ${err.message}`);
+  console.error('<<<<< [FATAL] Uncaught Exception Caught! >>>>>'); // Make it stand out
+  console.error('Timestamp:', new Date().toISOString());
+  console.error(`Error Message: ${err?.message || 'No message'}`);
   console.error('Origin:', origin);
-  console.error('Stack:', err.stack);
-  // pool.end().then(() => process.exit(1)); 
+  console.error('Stack Trace:', err?.stack || 'No stack trace');
+  console.error('<<<<< END Uncaught Exception >>>>>');
+  // Optionally force exit if needed, but logging is key
+  // process.exit(1); 
 });
 
 process.on('unhandledRejection', (reason, promise) => {
-  console.error('[FATAL] Unhandled Rejection at:', promise);
+  console.error('<<<<< [FATAL] Unhandled Rejection Caught! >>>>>'); // Make it stand out
+  console.error('Timestamp:', new Date().toISOString());
   console.error('Reason:', reason);
+  console.error('Promise:', promise);
+  console.error('<<<<< END Unhandled Rejection >>>>>');
+  // Optionally force exit
+  // process.exit(1); 
 });
-console.log('[Server Start] Global error handlers attached.'); // <<< ADD LOG
+console.log('[Server Start] Global error handlers attached.');
 
 // --- Start Server ---
 const port = process.env.PORT || 3001; // Define port here, default to 3001

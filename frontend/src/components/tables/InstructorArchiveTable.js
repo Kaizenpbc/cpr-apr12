@@ -9,16 +9,8 @@ import {
     Paper,
     Typography
 } from '@mui/material';
-
-// Helper function to format date string
-const formatDate = (dateString) => {
-    if (!dateString) return '-';
-    try {
-        return new Date(dateString).toLocaleDateString(); 
-    } catch (e) {
-        return 'Invalid Date';
-    }
-};
+// Import shared formatters
+import { formatDate } from '../../utils/formatters'; // Correct path
 
 const InstructorArchiveTable = ({ courses }) => {
 
