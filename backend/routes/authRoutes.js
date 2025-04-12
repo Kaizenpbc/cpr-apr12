@@ -67,10 +67,10 @@ router.post('/login', async (req, res) => {
 
         console.log('[API POST /auth/login] User object being sent to frontend:', userPayload);
 
-        const token = jwt.sign(userPayload, JWT_SECRET, { expiresIn: '1h' }); // Set token expiry
+        const token = jwt.sign(userPayload, JWT_SECRET, { expiresIn: '1h' }); // Generate the actual JWT
 
-        // Send user data (without password) and token
-        res.json({ success: true, user: userPayload, token: user.userid }); // **KEEPING TOKEN AS USERID FOR NOW**
+        // Send user data (without password) and the ACTUAL token
+        res.json({ success: true, user: userPayload, token: token }); // <<< Send the generated token
 
     } catch (error) {
         console.error('[API POST /auth/login] Login error:', error);

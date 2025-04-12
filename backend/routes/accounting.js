@@ -898,45 +898,56 @@ router.get('/reports/revenue', authenticateToken, checkAccountingAccess, async (
         return res.status(400).json({ success: false, message: 'Invalid year parameter.' });
     }
 
+    const currentMonthNumeric = new Date().getMonth() + 1; // 1-12
+    const currentYearNumeric = new Date().getFullYear();
+    const endMonth = (year === currentYearNumeric) ? currentMonthNumeric : 12;
+    const endMonthString = `${year}-${String(endMonth).padStart(2, '0')}`;
+
     try {
-        // Updated Query using CTEs and Window Functions
         const query = `
-            WITH Months AS (
-                SELECT TO_CHAR(generate_series(make_date($1::integer, 1, 1), make_date($1::integer, 12, 1), '1 month'::interval), 'YYYY-MM') as month
+            WITH RECURSIVE MonthSeries AS (
+                SELECT make_date($1::integer, 1, 1) AS month_start
+                UNION ALL
+                SELECT (month_start + interval '1 month')::date
+                FROM MonthSeries
+                WHERE month_start < make_date($1::integer, $2::integer, 1)
             ),
-            MonthlyInvoices AS (
-                SELECT TO_CHAR(InvoiceDate, 'YYYY-MM') as month, SUM(Amount) as totalInvoiced
-                FROM Invoices WHERE EXTRACT(YEAR FROM InvoiceDate) = $1::integer
-                GROUP BY month
+            Months AS (
+                SELECT TO_CHAR(month_start, 'YYYY-MM') as month FROM MonthSeries
             ),
-            MonthlyPayments AS (
-                SELECT TO_CHAR(PaymentDate, 'YYYY-MM') as month, SUM(AmountPaid) as totalPaidInMonth
-                FROM Payments WHERE EXTRACT(YEAR FROM PaymentDate) = $1::integer
-                GROUP BY month
+            InvoicesAgg AS (
+                 SELECT TO_CHAR(InvoiceDate, 'YYYY-MM') as month, SUM(Amount) as totalInvoiced
+                 FROM Invoices
+                 GROUP BY month
             ),
-            CumulativeTotals AS (
-                SELECT
-                    m.month,
-                    COALESCE(mi.totalInvoiced, 0) as monthlyInvoiced,
-                    COALESCE(mp.totalPaidInMonth, 0) as monthlyPaid,
-                    SUM(COALESCE(mi.totalInvoiced, 0)) OVER (ORDER BY m.month) as cumulativeInvoiced,
-                    SUM(COALESCE(mp.totalPaidInMonth, 0)) OVER (ORDER BY m.month) as cumulativePaid
-                FROM Months m
-                LEFT JOIN MonthlyInvoices mi ON m.month = mi.month
-                LEFT JOIN MonthlyPayments mp ON m.month = mp.month
+            PaymentsAgg AS (
+                 SELECT TO_CHAR(PaymentDate, 'YYYY-MM') as month, SUM(AmountPaid) as totalPaidInMonth
+                 FROM Payments
+                 GROUP BY month
+            ),
+            Cumulative AS (
+                 SELECT
+                      m.month,
+                      COALESCE(ia.totalInvoiced, 0) as monthlyInvoiced,
+                      COALESCE(pa.totalPaidInMonth, 0) as monthlyPaid,
+                      SUM(COALESCE(ia.totalInvoiced, 0)) OVER (ORDER BY m.month) as cumulativeInvoiced,
+                      SUM(COALESCE(pa.totalPaidInMonth, 0)) OVER (ORDER BY m.month) as cumulativePaid
+                 FROM Months m
+                 LEFT JOIN InvoicesAgg ia ON m.month = ia.month
+                 LEFT JOIN PaymentsAgg pa ON m.month = pa.month
             )
             SELECT
-                ct.month,
-                ct.monthlyInvoiced as "totalInvoiced",
-                COALESCE(LAG(ct.cumulativeInvoiced - ct.cumulativePaid, 1) OVER (ORDER BY ct.month), 0) as "balanceBroughtForward",
-                ct.monthlyPaid as "totalPaidInMonth"
-            FROM CumulativeTotals ct
-            ORDER BY ct.month ASC;
+                c.month,
+                c.monthlyInvoiced as "totalInvoiced",
+                COALESCE(LAG(c.cumulativeInvoiced - c.cumulativePaid, 1) OVER (ORDER BY c.month), 0) as "balanceBroughtForward",
+                c.monthlyPaid as "totalPaidInMonth"
+            FROM Cumulative c
+            WHERE c.month <= $3 -- Filter to end month
+            ORDER BY c.month ASC;
         `;
         
-        const result = await pool.query(query, [year]);
+        const result = await pool.query(query, [year, endMonth, endMonthString]);
 
-        // Map results, ensuring correct types
         const revenueData = result.rows.map(row => ({
             month: row.month,
             totalInvoiced: parseFloat(row.totalInvoiced || 0),
@@ -944,29 +955,42 @@ router.get('/reports/revenue', authenticateToken, checkAccountingAccess, async (
             totalPaidInMonth: parseFloat(row.totalPaidInMonth || 0)
         }));
 
-        console.log(`[API GET /reports/revenue] Report data generated for year ${year} with BBF.`);
+        console.log(`[API GET /reports/revenue] Report data generated for year ${year} up to month ${endMonthString} with BBF.`);
         res.json({ success: true, reportData: revenueData });
 
     } catch (err) {
-        // Simplified fallback for now: just return invoiced if payments fails
-         if (err.code === '42P01') { 
+         if (err.code === '42P01') { // Handle missing Payments table
             console.warn(`[API GET /reports/revenue] Payments table likely missing. Returning only invoiced data. Error: ${err.message}`);
             try {
-                 const fallbackQuery = `
-                    WITH Months AS (
-                        SELECT TO_CHAR(generate_series(make_date($1::integer, 1, 1), make_date($1::integer, 12, 1), '1 month'::interval), 'YYYY-MM') as month
+                const endMonth = (year === new Date().getFullYear()) ? new Date().getMonth() + 1 : 12;
+                const endMonthString = `${year}-${String(endMonth).padStart(2, '0')}`;
+                const fallbackQuery = `
+                    WITH RECURSIVE MonthSeries AS (
+                        SELECT make_date($1::integer, 1, 1) AS month_start
+                        UNION ALL
+                        SELECT (month_start + interval '1 month')::date
+                        FROM MonthSeries
+                        WHERE month_start < make_date($1::integer, $2::integer, 1)
+                    ),
+                    Months AS (
+                        SELECT TO_CHAR(month_start, 'YYYY-MM') as month FROM MonthSeries
+                    ),
+                    MonthlyInvoices AS (
+                         SELECT TO_CHAR(InvoiceDate, 'YYYY-MM') as month, SUM(Amount) as totalInvoiced
+                         FROM Invoices WHERE EXTRACT(YEAR FROM InvoiceDate) = $1::integer
+                         GROUP BY month
                     )
                     SELECT
                         m.month,
-                        COALESCE(SUM(i.Amount), 0) as "totalInvoiced",
+                        COALESCE(mi.totalInvoiced, 0) as "totalInvoiced",
                         0 as "balanceBroughtForward",
                         0 as "totalPaidInMonth"
                     FROM Months m
-                    LEFT JOIN Invoices i ON TO_CHAR(i.InvoiceDate, 'YYYY-MM') = m.month AND EXTRACT(YEAR FROM i.InvoiceDate) = $1::integer
-                    GROUP BY m.month
+                    LEFT JOIN MonthlyInvoices mi ON m.month = mi.month
+                    WHERE m.month <= $3
                     ORDER BY m.month ASC;
                 `;
-                const fallbackResult = await pool.query(fallbackQuery, [year]);
+                const fallbackResult = await pool.query(fallbackQuery, [year, endMonth, endMonthString]);
                 const fallbackData = fallbackResult.rows.map(row => ({
                     month: row.month,
                     totalInvoiced: parseFloat(row.totalInvoiced || 0),
@@ -975,8 +999,8 @@ router.get('/reports/revenue', authenticateToken, checkAccountingAccess, async (
                 }));
                 res.json({ success: true, reportData: fallbackData });
             } catch (fallbackErr) {
-                console.error("[API GET /reports/revenue] Error during fallback query:", fallbackErr);
-                res.status(500).json({ success: false, message: 'Failed to generate Revenue report.' });
+                 console.error("[API GET /reports/revenue] Error during fallback query:", fallbackErr);
+                 res.status(500).json({ success: false, message: 'Failed to generate Revenue report.' });
             }
         } else {
              console.error("[API GET /reports/revenue] Error:", err);

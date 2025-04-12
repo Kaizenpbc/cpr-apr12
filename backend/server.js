@@ -1080,3 +1080,72 @@ try {
 // app.listen(port, '0.0.0.0', () => { ... });
 
 // Remove any trailing characters/lines (ensure this is the end of the file)
+
+// --- Admin Reports Endpoints ---
+
+// GET /api/admin/reports/instructor-workload
+app.get('/api/admin/reports/instructor-workload', authenticateToken, checkAdminOrSuperAdmin, async (req, res) => {
+    // Get optional date range from query parameters
+    let { startDate, endDate } = req.query;
+    console.log(`[API GET /reports/instructor-workload] Request received. Range: ${startDate} to ${endDate}`);
+
+    // Basic validation or default date range (e.g., current month)
+    if (!startDate || !endDate) {
+        // Example: Default to current month if dates aren't provided
+        const today = new Date();
+        const year = today.getFullYear();
+        const month = today.getMonth();
+        startDate = new Date(year, month, 1).toISOString().split('T')[0];
+        endDate = new Date(year, month + 1, 0).toISOString().split('T')[0];
+        console.log(`[API GET /reports/instructor-workload] No date range provided, defaulting to: ${startDate} to ${endDate}`);
+    }
+    // Add further date validation if needed
+
+    try {
+        const query = `
+            SELECT
+                i.InstructorID,
+                u.FirstName,
+                u.LastName,
+                COALESCE(completed.count, 0) AS "completedCount",
+                COALESCE(scheduled.count, 0) AS "scheduledCount"
+            FROM Instructors i
+            JOIN Users u ON i.UserID = u.UserID
+            -- Subquery for completed courses in range
+            LEFT JOIN (
+                SELECT InstructorID, COUNT(*) as count
+                FROM Courses
+                WHERE Status = 'Completed'
+                  AND DateScheduled >= $1 AND DateScheduled <= $2
+                GROUP BY InstructorID
+            ) completed ON i.InstructorID = completed.InstructorID
+            -- Subquery for scheduled courses in range
+            LEFT JOIN (
+                SELECT InstructorID, COUNT(*) as count
+                FROM Courses
+                WHERE Status = 'Scheduled'
+                  AND DateScheduled >= $1 AND DateScheduled <= $2
+                GROUP BY InstructorID
+            ) scheduled ON i.InstructorID = scheduled.InstructorID
+            ORDER BY u.LastName, u.FirstName;
+        `;
+
+        const result = await pool.query(query, [startDate, endDate]);
+
+        const reportData = result.rows.map(row => ({
+            instructorId: row.instructorid,
+            name: `${row.firstname} ${row.lastname}`,
+            completedCount: parseInt(row.completedCount, 10),
+            scheduledCount: parseInt(row.scheduledCount, 10)
+        }));
+
+        console.log(`[API GET /reports/instructor-workload] Generated report for ${reportData.length} instructors.`);
+        res.json({ success: true, reportData: reportData });
+
+    } catch (err) {
+        console.error("[API GET /reports/instructor-workload] Error:", err);
+        res.status(500).json({ success: false, message: 'Failed to generate Instructor Workload report.' });
+    }
+});
+
+// TODO: Add /api/admin/reports/course-scheduling endpoint later
