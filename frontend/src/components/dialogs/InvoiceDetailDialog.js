@@ -13,6 +13,7 @@ import {
     Divider
 } from '@mui/material';
 import * as api from '../../services/api'; // Adjust path as needed
+import EmailIcon from '@mui/icons-material/Email';
 
 // Helper function to format currency
 const formatCurrency = (amount) => {
@@ -26,10 +27,11 @@ const formatDate = (dateString) => {
     return new Date(dateString).toLocaleDateString();
 };
 
-const InvoiceDetailDialog = ({ open, onClose, invoiceId, onEmailClick }) => {
+const InvoiceDetailDialog = ({ open, onClose, invoiceId, onActionSuccess, onActionError }) => {
     const [invoice, setInvoice] = useState(null);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState('');
+    const [isSendingEmail, setIsSendingEmail] = useState(false);
 
     useEffect(() => {
         if (open && invoiceId) {
@@ -58,9 +60,33 @@ const InvoiceDetailDialog = ({ open, onClose, invoiceId, onEmailClick }) => {
         }
     }, [open, invoiceId]);
 
-    const handleEmail = () => {
-        if (onEmailClick && invoice) {
-            onEmailClick(invoice.invoiceid);
+    const handleSendEmail = async () => {
+        if (!invoiceId) return;
+        setIsSendingEmail(true);
+        console.log(`[InvoiceDetailDialog] Attempting to send email for Invoice ID: ${invoiceId}`);
+        try {
+            const response = await api.emailInvoice(invoiceId);
+            if (response.success) {
+                let message = response.message || 'Email queued successfully.';
+                if (response.previewUrl) {
+                    console.log('Ethereal Preview URL:', response.previewUrl);
+                    // Optionally include URL hint in message?
+                    // message += ' Preview link logged to console.'; 
+                }
+                // Use callback prop to show snackbar in parent
+                if (onActionSuccess) onActionSuccess(message);
+                 // Optionally update email sent status locally if needed
+                // setInvoice(prev => ({...prev, emailsentat: new Date().toISOString() })); 
+                // onClose(); // Optionally close dialog after sending
+            } else {
+                throw new Error(response.message || 'Failed to send email via API.');
+            }
+        } catch (err) {
+            console.error(`Error sending email for invoice ${invoiceId}:`, err);
+             // Use callback prop to show error snackbar in parent
+             if (onActionError) onActionError(err.message || 'Failed to send email.');
+        } finally {
+            setIsSendingEmail(false);
         }
     };
 
@@ -114,7 +140,15 @@ const InvoiceDetailDialog = ({ open, onClose, invoiceId, onEmailClick }) => {
             <DialogActions>
                 {/* Add Email button if email available */}
                 {invoice?.contactemail && (
-                     <Button onClick={handleEmail} disabled={!invoice || isLoading}>Email Invoice</Button>
+                     <Button 
+                        onClick={handleSendEmail} 
+                        color="primary" 
+                        variant="contained" 
+                        disabled={isLoading || isSendingEmail || !invoice || !invoice.contactemail}
+                        startIcon={isSendingEmail ? <CircularProgress size={20} color="inherit"/> : <EmailIcon />}
+                    >
+                        {isSendingEmail ? 'Sending...' : (invoice?.emailsentat ? 'Resend Email' : 'Send Email')}
+                    </Button>
                 )}
                 <Button onClick={onClose}>Close</Button>
                  {/* Placeholder for other actions like Record Payment */}

@@ -36,8 +36,15 @@ const InstructorArchiveTable = ({ courses }) => {
                     </TableRow>
                 </TableHead>
                 <TableBody>
-                    {courses.map((course) => (
-                        <TableRow key={course.courseid} hover sx={{ '&:last-child td, &:last-child th': { border: 0 } }}>
+                    {courses.map((course, index) => (
+                        <TableRow 
+                            key={course.courseid} 
+                            hover 
+                            sx={{ 
+                                '&:last-child td, &:last-child th': { border: 0 },
+                                backgroundColor: index % 2 !== 0 ? '#f9f9f9' : 'inherit'
+                            }}
+                        >
                             <TableCell>{formatDate(course.datescheduled)}</TableCell> {/* Use DateScheduled as completion date? */}
                             <TableCell>{course.organizationname || '-'}</TableCell>
                             <TableCell>{course.coursenumber || '-'}</TableCell>

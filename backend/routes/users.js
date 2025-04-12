@@ -1,16 +1,11 @@
 const express = require('express');
 const { pool } = require('../db');
 const authenticateToken = require('../middleware/authenticateToken');
+const { checkSuperAdmin } = require('../middleware/checkRole'); // Assuming role check middleware exists
+const bcrypt = require('bcrypt'); // Import bcrypt
 
 const router = express.Router();
-
-// Middleware to check for SuperAdmin role (can be moved to a shared middleware file later)
-const checkSuperAdmin = (req, res, next) => {
-    if (!req.user || req.user.role !== 'SuperAdmin') {
-        return res.status(403).json({ success: false, message: 'Forbidden: Requires SuperAdmin privileges.' });
-    }
-    next();
-};
+const saltRounds = 10; // Cost factor for hashing
 
 // GET all users (SuperAdmin only)
 router.get('/', authenticateToken, checkSuperAdmin, async (req, res) => {
@@ -54,15 +49,19 @@ router.post('/', authenticateToken, checkSuperAdmin, async (req, res) => {
     try {
         await client.query('BEGIN');
 
-        // Insert into Users table
-        // Note: Storing plain text passwords is very insecure! Use hashing (e.g., bcrypt) in a real app.
-        const userInsertResult = await client.query(
+        // Hash the password
+        const hashedPassword = await bcrypt.hash(password, saltRounds);
+        console.log(`[API POST /users] Hashed password generated for user ${username}.`);
+
+        // Insert into Users table with hashed password
+        const userResult = await client.query(
             `INSERT INTO Users (Username, Password, Role, FirstName, LastName, Email, Phone, OrganizationID)
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
              RETURNING UserID`,
-            [username, password, role, firstName, lastName, email, phone || null, role === 'Organization' ? organizationId : null]
+            [username, hashedPassword, role, firstName, lastName, email, phone || null, role === 'Organization' ? organizationId : null]
         );
-        const newUserId = userInsertResult.rows[0].userid;
+        const newUserId = userResult.rows[0].userid;
+        console.log(`[API POST /users] User inserted with ID: ${newUserId}`);
 
         // If role is Instructor, insert into Instructors table
         if (role === 'Instructor') {
@@ -75,7 +74,7 @@ router.post('/', authenticateToken, checkSuperAdmin, async (req, res) => {
 
         await client.query('COMMIT');
 
-        // Fetch the newly created user details (optional but good practice)
+        // Fetch the newly created user details (excluding password)
         const newUserResult = await pool.query('SELECT UserID, Username, Role, FirstName, LastName, Email, Phone, OrganizationID FROM Users WHERE UserID = $1', [newUserId]);
 
         console.log('[API POST /users] User created successfully:', newUserResult.rows[0]);
@@ -158,9 +157,6 @@ router.put('/:id', authenticateToken, checkSuperAdmin, async (req, res) => {
           return res.status(403).json({ success: false, message: 'Cannot change the role of the primary superadmin user.'});
      }
 
-    // **Password Handling Note:** Updating password requires hashing logic in a real app.
-    // This implementation will store/update plain text password if provided.
-
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
@@ -173,18 +169,29 @@ router.put('/:id', authenticateToken, checkSuperAdmin, async (req, res) => {
         }
         const currentRole = currentUserResult.rows[0].role;
 
-        // 2. Update Users table
-        const userUpdateResult = await client.query(
-            `UPDATE Users SET
+        // -- Prepare update query --
+        let updateFields = [
+            username, role, firstName, lastName, email, phone || null,
+            role === 'Organization' ? organizationId : null, userIdToUpdate
+        ];
+        let updateQuery = `
+            UPDATE Users SET
                 Username = $1, Role = $2, FirstName = $3, LastName = $4, Email = $5, Phone = $6,
-                OrganizationID = $7, UpdatedAt = CURRENT_TIMESTAMP
-                ${password ? ', Password = $9' : ''}
-             WHERE UserID = $8
-             RETURNING UserID`,
-            password ? 
-            [username, role, firstName, lastName, email, phone || null, role === 'Organization' ? organizationId : null, userIdToUpdate, password] :
-            [username, role, firstName, lastName, email, phone || null, role === 'Organization' ? organizationId : null, userIdToUpdate]
-        );
+                OrganizationID = $7, UpdatedAt = CURRENT_TIMESTAMP 
+        `;
+        // Conditionally add password update
+        if (password) {
+            console.log(`[API PUT /users/${userIdToUpdate}] Hashing new password...`);
+            const hashedPassword = await bcrypt.hash(password, saltRounds);
+            updateQuery += ', Password = $9'; // Add password field to SET clause
+            updateFields.push(hashedPassword); // Add hashed password to parameters
+        }
+        updateQuery += ' WHERE UserID = $8 RETURNING UserID'; // Add WHERE clause (index is $8)
+
+        // Execute the dynamic update query
+        console.log(`[API PUT /users/${userIdToUpdate}] Executing update query...`);
+        const userUpdateResult = await client.query(updateQuery, updateFields);
+        // -- End Update Query Prep --
 
         if (userUpdateResult.rowCount === 0) {
             // Should not happen if current user check passed, but safety check

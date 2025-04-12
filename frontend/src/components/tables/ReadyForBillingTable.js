@@ -43,8 +43,14 @@ const ReadyForBillingTable = ({ courses, onCreateInvoiceClick, onReviewClick }) 
                     </TableRow>
                 </TableHead>
                 <TableBody>
-                    {courses.map((course) => (
-                        <TableRow key={course.courseid} hover sx={{ '&:last-child td, &:last-child th': { border: 0 } }}>
+                    {courses.map((course, index) => (
+                        <TableRow 
+                            key={course.courseid}
+                            hover
+                            sx={{ 
+                                backgroundColor: index % 2 !== 0 ? '#f9f9f9' : 'inherit'
+                            }}
+                        >
                             <TableCell>{formatDate(course.systemdate)}</TableCell> 
                             <TableCell>{formatDate(course.datecompleted)}</TableCell> 
                             <TableCell>{course.coursenumber || '-'}</TableCell>

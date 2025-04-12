@@ -26,8 +26,9 @@ import {
     People as PeopleIcon, // For Instructor Dashboard
     PendingActions as PendingActionsIcon, // For Pending Courses
     EventAvailable as EventAvailableIcon, // For Scheduled Courses
+    AssignmentTurnedIn as CompletedIcon, // Icon for Completed
+    Assessment as ReportsIcon, // Add Reports icon
     Logout as LogoutIcon,
-    CheckCircle as CompletedIcon, // Icon for Completed
 } from '@mui/icons-material';
 import * as api from '../../services/api';
 import InstructorDashboardTable from '../tables/InstructorDashboardTable';
@@ -37,6 +38,8 @@ import CompletedCoursesTable from '../tables/CompletedCoursesTable';
 import InstructorWorkloadSummaryTable from '../tables/InstructorWorkloadSummaryTable';
 import ViewStudentsDialog from '../dialogs/ViewStudentsDialog';
 import ScheduleCourseDialog from '../dialogs/ScheduleCourseDialog';
+import CancelCourseDialog from '../dialogs/CancelCourseDialog';
+import AdminReportsView from '../views/AdminReportsView';
 
 const drawerWidth = 240;
 
@@ -76,6 +79,9 @@ const CourseAdminPortal = () => {
     const [completedSortBy, setCompletedSortBy] = useState('date');
     const [orgCoursesSortOrder, setOrgCoursesSortOrder] = useState('asc');
     const [orgCoursesSortBy, setOrgCoursesSortBy] = useState('daterequested');
+    // State for Cancel Dialog
+    const [showCancelDialog, setShowCancelDialog] = useState(false);
+    const [courseToCancel, setCourseToCancel] = useState(null); // Store {id, number}
 
     // --- useCallback wrapped functions FIRST ---
     const showSnackbar = useCallback((message, severity = 'success') => {
@@ -336,24 +342,43 @@ const CourseAdminPortal = () => {
         }
     };
 
-    const handleCancelCourse = async (courseId, courseNumber) => {
-        const confirmMessage = `Are you sure you want to cancel course: ${courseNumber} (ID: ${courseId})?`;
-        if (window.confirm(confirmMessage)) {
-            console.log(`Attempting to cancel course ${courseId}`);
-            try {
-                const response = await api.cancelCourse(courseId);
-                if (response.success) {
-                    showSnackbar(response.message || 'Course cancelled successfully.', 'success');
-                    // Refresh relevant lists
-                    loadPendingCourses(); 
-                    loadScheduledCourses();
-                } else {
-                    throw new Error(response.message || 'Cancellation failed on server.');
-                }
-            } catch (err) {
-                console.error(`Error cancelling course ${courseId}:`, err);
-                showSnackbar(err.message || 'An error occurred during cancellation.', 'error');
+    // Open Cancel Dialog
+    const handleCancelClick = (courseId, courseNumber) => {
+        console.log(`[AdminPortal] Cancel clicked for Course ID: ${courseId}, Number: ${courseNumber}`);
+        setCourseToCancel({ id: courseId, number: courseNumber });
+        setShowCancelDialog(true);
+    };
+
+    // Close Cancel Dialog
+    const handleCancelDialogClose = () => {
+        setShowCancelDialog(false);
+        setCourseToCancel(null);
+    };
+
+    // Confirm Cancellation Action
+    const handleConfirmCancel = async () => {
+        if (!courseToCancel || !courseToCancel.id) return;
+        
+        const courseId = courseToCancel.id;
+        const courseNumber = courseToCancel.number;
+        console.log(`[AdminPortal] Confirming cancellation for course ${courseId}`);
+        setShowCancelDialog(false); // Close dialog immediately
+        
+        try {
+            const response = await api.cancelCourse(courseId);
+            if (response.success) {
+                showSnackbar(response.message || `Course ${courseNumber} cancelled successfully.`, 'success');
+                // Refresh relevant lists
+                loadPendingCourses(); 
+                loadScheduledCourses();
+            } else {
+                throw new Error(response.message || 'Cancellation failed on server.');
             }
+        } catch (err) {
+            console.error(`Error cancelling course ${courseId}:`, err);
+            showSnackbar(err.message || 'An error occurred during cancellation.', 'error');
+        } finally {
+             setCourseToCancel(null); // Clear selected course
         }
     };
 
@@ -543,7 +568,7 @@ const CourseAdminPortal = () => {
                                 courses={filteredPendingCourses} 
                                 onScheduleClick={handleScheduleCourseClick} 
                                 onViewStudentsClick={handleViewStudentsClick}
-                                onCancelClick={handleCancelCourse}
+                                onCancelClick={handleCancelClick}
                             />
                         )}
                     </>
@@ -608,7 +633,7 @@ const CourseAdminPortal = () => {
                             <ScheduledCoursesTable 
                                 courses={filteredScheduledCourses} 
                                 onViewStudentsClick={handleViewStudentsClick} 
-                                onCancelClick={handleCancelCourse}
+                                onCancelClick={handleCancelClick}
                             />
                         )}
                     </>
@@ -655,6 +680,9 @@ const CourseAdminPortal = () => {
                         onSortRequest={handleCompletedSortRequest}
                     />
                 );
+            case 'reports': 
+                 console.log('[renderSelectedView: reports]');
+                 return <AdminReportsView />;
             default:
                 return <Typography>Select a view</Typography>;
         }
@@ -814,7 +842,29 @@ const CourseAdminPortal = () => {
                             </ListItemIcon>
                             <ListItemText primary="Completed Courses" />
                         </ListItem>
-                        
+
+                        {/* Reports Item - NEW */}
+                         <ListItem 
+                            component="div"
+                            selected={selectedView === 'reports'}
+                            onClick={() => setSelectedView('reports')}
+                             sx={{ 
+                                cursor: 'pointer', 
+                                py: 1.5, 
+                                backgroundColor: selectedView === 'reports' ? 'primary.light' : 'transparent',
+                                color: selectedView === 'reports' ? 'primary.contrastText' : 'inherit',
+                                '& .MuiListItemIcon-root': {
+                                    color: selectedView === 'reports' ? 'primary.contrastText' : 'inherit',
+                                },
+                                '&:hover': {
+                                    backgroundColor: selectedView === 'reports' ? 'primary.main' : 'action.hover',
+                                }
+                            }}
+                        >
+                            <ListItemIcon sx={{ color: 'inherit' }}><ReportsIcon /></ListItemIcon>
+                            <ListItemText primary="Reports" />
+                        </ListItem>
+
                         <Divider sx={{ my: 1 }} />
 
                         {/* Logout Item */}
@@ -860,6 +910,15 @@ const CourseAdminPortal = () => {
                     onCourseScheduled={handleCourseSuccessfullyScheduled}
                 />
             )}
+
+            {/* Cancel Course Dialog */} 
+            <CancelCourseDialog
+                open={showCancelDialog}
+                onClose={handleCancelDialogClose}
+                onConfirm={handleConfirmCancel}
+                courseId={courseToCancel?.id}
+                courseNumber={courseToCancel?.number}
+            />
 
             <Snackbar
                 open={snackbar.open}

@@ -125,14 +125,12 @@ const OrganizationDetailPage = () => {
             {/* Invoice History Section */}
              <Paper sx={{ p: 2, mb: 3 }}>
                 <Typography variant="h6" gutterBottom>Invoice History</Typography>
-                {/* Use the new table component */}
                 <OrgInvoiceHistoryTable invoices={orgInvoices} />
              </Paper>
 
             {/* Course History Section */}
              <Paper sx={{ p: 2, mb: 3 }}>
                 <Typography variant="h6" gutterBottom>Course History</Typography>
-                {/* Use the new table component */}
                 <OrgCourseHistoryTable courses={orgCourses} />
              </Paper>
 

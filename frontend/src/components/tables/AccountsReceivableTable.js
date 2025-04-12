@@ -203,7 +203,10 @@ const AccountsReceivableTable = ({
                                                 <IconButton 
                                                     color="primary"
                                                     size="small"
-                                                    onClick={() => onEmailInvoiceClick(invoice.invoiceid)}
+                                                    onClick={() => {
+                                                        console.log(`[AR Table] Email icon clicked for Invoice ID: ${invoice.invoiceid}`); 
+                                                        onEmailInvoiceClick(invoice.invoiceid); 
+                                                    }}
                                                     disabled={!invoice.contactemail} 
                                                 >
                                                      <EmailIcon fontSize="small" />

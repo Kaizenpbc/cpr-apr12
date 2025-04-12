@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import {
@@ -10,26 +10,23 @@ import {
     ListItemText,
     Typography,
     Container,
-    Paper,
     Divider,
-    CircularProgress,
     Alert,
     Snackbar,
     AppBar,
     Toolbar
 } from '@mui/material';
-import BusinessIcon from '@mui/icons-material/Business'; // Org icon
-import PeopleIcon from '@mui/icons-material/People'; // Users icon
-import BookIcon from '@mui/icons-material/Book'; // Courses icon (placeholder)
-import CategoryIcon from '@mui/icons-material/Category'; // Course Types icon
-import PriceChangeIcon from '@mui/icons-material/PriceChange'; // Pricing icon
-import LogoutIcon from '@mui/icons-material/Logout';
+import {
+    Business as OrganizationIcon,
+    People as UserIcon,
+    Category as CourseTypeIcon,
+    PriceChange as PricingIcon,
+    Logout as LogoutIcon,
+} from '@mui/icons-material';
 import OrganizationManager from '../admin/OrganizationManager';
-import UserManager from '../admin/UserManager'; // Import the manager component
-import CourseTypeManager from '../admin/CourseTypeManager'; // Import the manager
-import PricingManager from '../admin/PricingManager'; // Import the manager
+import UserManager from '../admin/UserManager';
+import CourseTypeManager from '../admin/CourseTypeManager';
 import PricingRuleManager from '../admin/PricingRuleManager';
-// import CourseManager from '../admin/CourseManager'; // To be created
 
 const drawerWidth = 240;
 
@@ -55,15 +52,16 @@ const SuperAdminPortal = () => {
     };
 
     const renderSelectedView = () => {
+        console.log(`[SuperAdmin] Rendering view: ${selectedView}`);
         switch (selectedView) {
             case 'organizations':
                 return <OrganizationManager />;
             case 'users':
-                return <UserManager />; // Render the component
+                return <UserManager />;
             case 'coursetypes':
-                 return <CourseTypeManager />;
+                return <CourseTypeManager />;
             case 'pricing':
-                 return <PricingManager />;
+                return <PricingRuleManager />;
             default:
                 return <Typography>Select a management section</Typography>;
         }
@@ -116,7 +114,7 @@ const SuperAdminPortal = () => {
                                 }
                             }}
                         >
-                            <ListItemIcon sx={{ color: 'inherit' }}><BusinessIcon /></ListItemIcon>
+                            <ListItemIcon sx={{ color: 'inherit' }}><OrganizationIcon /></ListItemIcon>
                             <ListItemText primary="Organizations" />
                         </ListItem>
 
@@ -138,7 +136,7 @@ const SuperAdminPortal = () => {
                                 }
                             }}
                         >
-                            <ListItemIcon sx={{ color: 'inherit' }}><PeopleIcon /></ListItemIcon>
+                            <ListItemIcon sx={{ color: 'inherit' }}><UserIcon /></ListItemIcon>
                             <ListItemText primary="Users" />
                         </ListItem>
 
@@ -160,7 +158,7 @@ const SuperAdminPortal = () => {
                                 }
                             }}
                         >
-                            <ListItemIcon sx={{ color: 'inherit' }}><CategoryIcon /></ListItemIcon>
+                            <ListItemIcon sx={{ color: 'inherit' }}><CourseTypeIcon /></ListItemIcon>
                             <ListItemText primary="Course Types" />
                         </ListItem>
 
@@ -182,7 +180,7 @@ const SuperAdminPortal = () => {
                                 }
                             }}
                         >
-                            <ListItemIcon sx={{ color: 'inherit' }}><PriceChangeIcon /></ListItemIcon>
+                            <ListItemIcon sx={{ color: 'inherit' }}><PricingIcon /></ListItemIcon>
                             <ListItemText primary="Pricing Rules" />
                         </ListItem>
 

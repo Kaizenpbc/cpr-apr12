@@ -1,14 +1,43 @@
-import React, { createContext, useState, useContext, useEffect, useRef } from 'react';
+import React, { createContext, useState, useContext, useEffect, useRef, useCallback } from 'react';
 import io from 'socket.io-client'; // Import socket.io-client
+import { jwtDecode } from 'jwt-decode'; // Import jwt-decode for decoding JWT
+import api from '../services/api'; // Import your API service
 
 const AuthContext = createContext(null);
 const SOCKET_URL = 'http://localhost:3001'; // Backend URL
 
 export const AuthProvider = ({ children }) => {
     const [user, setUser] = useState(null);
-    const [token, setToken] = useState(null); // Keep token state if needed elsewhere
-    const [loading, setLoading] = useState(true);
+    const [token, setToken] = useState(localStorage.getItem('token')); // Use 'token' key
+    const [isLoading, setIsLoading] = useState(true);
+    const [socket, setSocket] = useState(null);
     const socketRef = useRef(null); // Ref to store the socket instance
+
+    useEffect(() => {
+        const verifyToken = async () => {
+            const storedToken = localStorage.getItem('token'); // Check for 'token'
+            if (storedToken) {
+                setToken(storedToken);
+                try {
+                    // Decode using jwtDecode
+                    const decoded = jwtDecode(storedToken);
+                    if (decoded && decoded.exp * 1000 > Date.now()) {
+                        console.log('[AuthContext] Token verified (client-side decode), setting user:', decoded);
+                        setUser(decoded); // Set user from decoded payload
+                        connectSocket(decoded.userid);
+                    } else {
+                        console.log('[AuthContext] Token expired or invalid, logging out.');
+                        logout();
+                    }
+                } catch (error) {
+                    console.error('[AuthContext] Error verifying token:', error);
+                    logout();
+                }
+            } 
+            setIsLoading(false);
+        };
+        verifyToken();
+    }, []); // Run only once on mount
 
     useEffect(() => {
         const storedUser = localStorage.getItem('user');
@@ -20,7 +49,7 @@ export const AuthProvider = ({ children }) => {
             // Connect socket if user loaded from storage
             connectSocket(parsedUser.userid); 
         }
-        setLoading(false);
+        setIsLoading(false);
 
         // Cleanup function to disconnect socket when provider unmounts
         return () => {
@@ -67,32 +96,40 @@ export const AuthProvider = ({ children }) => {
          }
     };
 
-    const login = (userData, userToken) => {
-        // <<< DETAILED LOGGING START >>>
-        console.log('[AuthContext] login called with userData:', userData);
-        console.log('[AuthContext] login called with userToken:', userToken);
-        // <<< DETAILED LOGGING END >>>
-        setUser(userData);
-        setToken(userToken);
-        localStorage.setItem('user', JSON.stringify(userData));
-        localStorage.setItem('token', userToken);
-        // <<< DETAILED LOGGING START >>>
-        console.log('[AuthContext] State and localStorage updated. Current user state:', userData);
-        // <<< DETAILED LOGGING END >>>
-        // Connect socket after successful login
-        connectSocket(userData.userid); 
-    };
+    const login = useCallback(async (username, password) => {
+        try {
+            const response = await api.login(username, password);
+            if (response.success) {
+                const { user: userData, token: userToken } = response;
+                console.log('[AuthContext] login called with userData:', userData);
+                console.log('[AuthContext] login called with userToken:', userToken); // Log the JWT
+                setUser(userData);
+                setToken(userToken); // Set the JWT token
+                localStorage.setItem('user', JSON.stringify(userData));
+                localStorage.setItem('token', userToken); // Store JWT in localStorage
+                console.log('[AuthContext] State and localStorage updated. Current user state:', userData);
+                connectSocket(userData.userid);
+                return userData.Role; // Return role for navigation
+            } else {
+                throw new Error(response.message || 'Login failed');
+            }
+        } catch (error) {
+            console.error('Login API call error:', error);
+            logout(); // Clear state on login error
+            throw error; // Re-throw for the Login component to handle
+        }
+    }, [connectSocket]);
 
-    const logout = () => {
+    const logout = useCallback(() => {
+        console.log('[AuthContext] logout called');
+        disconnectSocket();
         setUser(null);
         setToken(null);
         localStorage.removeItem('user');
-        localStorage.removeItem('token');
-        // Disconnect socket on logout
-        disconnectSocket();
-    };
+        localStorage.removeItem('token'); // Remove JWT token
+    }, [disconnectSocket]);
 
-    if (loading) {
+    if (isLoading) {
         return null; // or a loading spinner
     }
 

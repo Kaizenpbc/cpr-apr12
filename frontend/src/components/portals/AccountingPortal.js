@@ -23,6 +23,7 @@ import {
     ReceiptLong as BillingIcon, 
     RequestQuote as ReceivablesIcon, // Example icon
     History as HistoryIcon, // Add History icon
+    Assessment as ReportsIcon, // Add Reports icon
     Logout as LogoutIcon,
 } from '@mui/icons-material';
 import ReadyForBillingTable from '../tables/ReadyForBillingTable'; // Import the table
@@ -32,6 +33,7 @@ import ViewStudentsDialog from '../dialogs/ViewStudentsDialog';
 import InvoiceDetailDialog from '../dialogs/InvoiceDetailDialog'; // Import Invoice Detail Dialog
 import RecordPaymentDialog from '../dialogs/RecordPaymentDialog'; // Import Record Payment Dialog
 import TransactionHistoryView from '../views/TransactionHistoryView'; // Import the new view
+import ReportsView from '../views/ReportsView'; // Import the new view
 
 const drawerWidth = 240;
 
@@ -195,30 +197,20 @@ const AccountingPortal = () => {
         setSelectedInvoiceForDetail(null);
     };
 
-    const handleEmailInvoiceClick = async (invoiceId) => {
-        console.log(`Email Invoice clicked for invoice: ${invoiceId}`);
-        // alert("Email Invoice functionality not yet implemented."); // Remove alert
-        try {
-            // Call the new API function
-            const response = await api.emailInvoice(invoiceId);
-            if (response.success) {
-                let message = response.message || 'Email queued successfully.';
-                // If using Ethereal, log the preview URL
-                if (response.previewUrl) {
-                    console.log('Ethereal Preview URL:', response.previewUrl);
-                    message += ' Ethereal preview link logged to console.';
-                }
-                setSnackbar({ open: true, message: message, severity: 'success' });
-                // Optionally close the detail dialog if email is sent from there
-                // setShowInvoiceDetailDialog(false);
-                // setSelectedInvoiceForDetail(null);
-            } else {
-                throw new Error(response.message || 'Failed to send email via API.');
-            }
-        } catch (err) {
-            console.error(`Error sending email for invoice ${invoiceId}:`, err);
-            setSnackbar({ open: true, message: err.message || 'Failed to send email.', severity: 'error' });
+    const handleEmailInvoiceClick = (invoiceId) => {
+        console.log(`[AccountingPortal] handleEmailInvoiceClick called for Invoice ID: ${invoiceId}`);
+        
+        // Find the full invoice data to pass to the dialog (needed for contact email check within dialog)
+        const selectedInvoice = invoices.find(inv => inv.invoiceid === invoiceId);
+        if (!selectedInvoice) {
+            console.error(`[AccountingPortal] Could not find invoice data for ID ${invoiceId} in state.`);
+            showSnackbar(`Error: Could not find invoice data for ID ${invoiceId}.`, 'error');
+            return; 
         }
+
+        console.log('[AccountingPortal] Found selected invoice data, setting state to open dialog:', selectedInvoice);
+        setSelectedInvoiceForDetail(selectedInvoice); // Pass the whole object now
+        setShowInvoiceDetailDialog(true);
     };
     // --- End Action Handlers ---
 
@@ -247,9 +239,12 @@ const AccountingPortal = () => {
                         onEmailInvoiceClick={handleEmailInvoiceClick} 
                     />
                 );
-            case 'history': // Add case for the new view
+            case 'history': 
                  console.log('[renderSelectedView: history]');
                  return <TransactionHistoryView />;
+            case 'reports': 
+                 console.log('[renderSelectedView: reports]');
+                 return <ReportsView />;
             default:
                 return <Typography>Select a view</Typography>;
         }
@@ -351,6 +346,27 @@ const AccountingPortal = () => {
                             <ListItemIcon sx={{ color: 'inherit' }}><HistoryIcon /></ListItemIcon>
                             <ListItemText primary="Invoice History" />
                         </ListItem>
+                        {/* Reports Item - NEW */}
+                        <ListItem 
+                            component="div"
+                            selected={selectedView === 'reports'}
+                            onClick={() => setSelectedView('reports')}
+                             sx={{ // Apply styling 
+                                cursor: 'pointer', 
+                                py: 1.5, 
+                                backgroundColor: selectedView === 'reports' ? 'primary.light' : 'transparent',
+                                color: selectedView === 'reports' ? 'primary.contrastText' : 'inherit',
+                                '& .MuiListItemIcon-root': {
+                                    color: selectedView === 'reports' ? 'primary.contrastText' : 'inherit',
+                                },
+                                '&:hover': {
+                                    backgroundColor: selectedView === 'reports' ? 'primary.main' : 'action.hover',
+                                }
+                            }}
+                        >
+                            <ListItemIcon sx={{ color: 'inherit' }}><ReportsIcon /></ListItemIcon>
+                            <ListItemText primary="Reports" />
+                        </ListItem>
                         <Divider sx={{ my: 1 }} />
                          {/* Logout Item - Apply Styles */}
                         <ListItem 
@@ -389,12 +405,14 @@ const AccountingPortal = () => {
 
             {/* Invoice Detail Dialog */}
             {showInvoiceDetailDialog && (
-                <InvoiceDetailDialog
+                <InvoiceDetailDialog 
                     open={showInvoiceDetailDialog}
                     onClose={handleInvoiceDetailDialogClose}
-                    invoiceId={selectedInvoiceForDetail}
-                    // Pass email handler down
-                    onEmailClick={handleEmailInvoiceClick} 
+                    invoiceId={selectedInvoiceForDetail?.invoiceid} // Keep passing ID for fetching
+                    // Pass initial invoice data to potentially pre-fill or check contact email
+                    // initialInvoiceData={selectedInvoiceForDetail} 
+                    onActionSuccess={(message) => showSnackbar(message, 'success')}
+                    onActionError={(message) => showSnackbar(message, 'error')}
                 />
             )}
 

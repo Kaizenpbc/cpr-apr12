@@ -123,8 +123,14 @@ function OrganizationManager() {
                                     <TableCell colSpan={9} align="center">No organizations found.</TableCell>
                                 </TableRow>
                             ) : (
-                                organizations.map((org) => (
-                                    <TableRow key={org.organizationid} hover>
+                                organizations.map((org, index) => (
+                                    <TableRow 
+                                        key={org.organizationid} 
+                                        hover
+                                        sx={{ 
+                                            backgroundColor: index % 2 !== 0 ? '#f9f9f9' : 'inherit'
+                                        }}
+                                    >
                                         <TableCell>{org.organizationid}</TableCell>
                                         <TableCell>{org.organizationname}</TableCell>
                                         <TableCell>{org.contactname || '-'}</TableCell>

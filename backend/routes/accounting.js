@@ -724,4 +724,265 @@ router.get('/organizations/:orgId/financial-summary', authenticateToken, checkAc
     }
 });
 
+// POST /api/accounting/invoices - Create a new invoice from a course
+router.post('/invoices', authenticateToken, checkAccountingAccess, async (req, res) => {
+    const { courseId } = req.body;
+    console.log(`[API POST /accounting/invoices] Request received for Course ID: ${courseId}`);
+
+    if (!courseId || isNaN(parseInt(courseId, 10))) {
+        return res.status(400).json({ success: false, message: 'Valid Course ID is required.' });
+    }
+
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+
+        // 1. Fetch course details
+        const courseResult = await client.query(
+            `SELECT c.CourseID, c.CourseTypeID, c.OrganizationID, c.DateScheduled, c.CourseNumber, o.OrganizationName, ct.CourseCode
+             FROM Courses c 
+             JOIN Organizations o ON c.OrganizationID = o.OrganizationID
+             JOIN CourseTypes ct ON c.CourseTypeID = ct.CourseTypeID
+             WHERE c.CourseID = $1 AND c.Status = 'Billing Ready' FOR UPDATE`, 
+            [courseId]
+        );
+        if (courseResult.rowCount === 0) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ success: false, message: 'Course not found or not ready for billing.' });
+        }
+        const course = courseResult.rows[0];
+
+        // *** ADDED CHECK FOR PRICING RULE START ***
+        const pricingRuleRes = await client.query(
+            'SELECT Price FROM OrganizationCoursePricing WHERE OrganizationID = $1 AND CourseTypeID = $2',
+            [course.organizationid, course.coursetypeid]
+        );
+        if (pricingRuleRes.rowCount === 0) {
+            await client.query('ROLLBACK');
+            console.warn(`[API POST /invoices] Failed: No pricing rule found for Org ${course.organizationid}, CourseType ${course.coursetypeid}`);
+            return res.status(400).json({ success: false, message: 'Cannot create invoice: No pricing rule exists for this organization and course type. Please add one in Super Admin -> Pricing Rules.' });
+        }
+        const pricePerStudent = parseFloat(pricingRuleRes.rows[0].price);
+        console.log(`[API POST /invoices] Pricing rule found. Price per student: ${pricePerStudent}`);
+        // *** ADDED CHECK FOR PRICING RULE END ***
+
+        // 2. Get student attendance count (existing logic)
+        const attendanceResult = await client.query(/* ... */);
+        const attendanceCount = parseInt(attendanceResult.rows[0].count, 10);
+
+        // 3. Calculate invoice amount (existing logic - make sure it uses pricePerStudent)
+        const amount = attendanceCount * pricePerStudent;
+
+        // 4. Generate Invoice Number (existing logic)
+        // ...
+        
+        // 5. Insert Invoice record (existing logic)
+        const invoiceResult = await client.query(/* ... */);
+
+        // 6. Update Course status to 'Invoiced' (existing logic)
+        await client.query(/* ... */);
+
+        await client.query('COMMIT');
+        // ... success response ...
+
+    } catch (err) {
+        // ... error handling ...
+    }
+});
+
+// --- Reports Endpoints ---
+
+// GET /api/accounting/reports/ar-aging - Fetch AR Aging data
+router.get('/reports/ar-aging', authenticateToken, checkAccountingAccess, async (req, res) => {
+    console.log('[API GET /reports/ar-aging] Request received');
+    try {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0); 
+        const todayIso = today.toISOString().split('T')[0];
+
+        // Fetch unpaid invoices along with payment totals
+        const result = await pool.query(`
+            SELECT 
+                i.InvoiceID, i.InvoiceNumber, i.InvoiceDate, i.DueDate, i.Amount, i.PaymentStatus,
+                o.OrganizationName,
+                c.CourseNumber,
+                COALESCE(p.TotalPaid, 0) as "paidToDate"
+            FROM Invoices i
+            JOIN Courses c ON i.CourseID = c.CourseID
+            JOIN Organizations o ON c.OrganizationID = o.OrganizationID
+            LEFT JOIN (
+                SELECT InvoiceID, SUM(AmountPaid) as TotalPaid
+                FROM Payments
+                GROUP BY InvoiceID
+            ) p ON i.InvoiceID = p.InvoiceID
+            WHERE i.PaymentStatus != 'Paid' -- Only Pending or Overdue
+            ORDER BY o.OrganizationName, i.DueDate ASC
+        `);
+
+        const agingReportData = {
+            reportDate: todayIso,
+            buckets: {
+                current: { total: 0, invoices: [] },
+                days1_30: { total: 0, invoices: [] },
+                days31_60: { total: 0, invoices: [] },
+                days61_90: { total: 0, invoices: [] },
+                over90: { total: 0, invoices: [] }
+            },
+            grandTotal: 0
+        };
+
+        result.rows.forEach(invoice => {
+            const invoiceAmount = parseFloat(invoice.amount || 0);
+            const paidAmount = parseFloat(invoice.paidToDate || 0);
+            const balanceDue = invoiceAmount - paidAmount;
+
+            if (balanceDue <= 0) return; // Skip fully paid items missed by filter
+
+            const invoiceDetail = {
+                invoiceId: invoice.invoiceid,
+                invoiceNumber: invoice.invoicenumber,
+                invoiceDate: invoice.invoicedate,
+                dueDate: invoice.duedate,
+                organizationName: invoice.organizationname,
+                balanceDue: balanceDue
+            };
+
+            agingReportData.grandTotal += balanceDue;
+
+            try {
+                const dueDate = new Date(invoice.duedate);
+                dueDate.setHours(0, 0, 0, 0); 
+
+                if (dueDate >= today) {
+                    agingReportData.buckets.current.invoices.push(invoiceDetail);
+                    agingReportData.buckets.current.total += balanceDue;
+                } else {
+                    const diffTime = today - dueDate; 
+                    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
+                    
+                    if (diffDays <= 30) {
+                        agingReportData.buckets.days1_30.invoices.push(invoiceDetail);
+                        agingReportData.buckets.days1_30.total += balanceDue;
+                    } else if (diffDays <= 60) {
+                        agingReportData.buckets.days31_60.invoices.push(invoiceDetail);
+                        agingReportData.buckets.days31_60.total += balanceDue;
+                    } else if (diffDays <= 90) {
+                        agingReportData.buckets.days61_90.invoices.push(invoiceDetail);
+                        agingReportData.buckets.days61_90.total += balanceDue;
+                    } else {
+                        agingReportData.buckets.over90.invoices.push(invoiceDetail);
+                        agingReportData.buckets.over90.total += balanceDue;
+                    }
+                }
+            } catch (e) {
+                 console.error(`Error processing date for aging report on invoice ${invoice.invoiceid}:`, e);
+                 // Optionally add to an error bucket?
+            }
+        });
+
+        console.log('[API GET /reports/ar-aging] Report generated.');
+        res.json({ success: true, reportData: agingReportData });
+
+    } catch (err) {
+        console.error("[API GET /reports/ar-aging] Error:", err);
+        res.status(500).json({ success: false, message: 'Failed to generate AR Aging report.' });
+    }
+});
+
+// GET /api/accounting/reports/revenue - Fetch data for revenue report
+router.get('/reports/revenue', authenticateToken, checkAccountingAccess, async (req, res) => {
+    const year = req.query.year ? parseInt(req.query.year, 10) : new Date().getFullYear();
+    console.log(`[API GET /reports/revenue] Request received for Year: ${year}`);
+
+    if (isNaN(year)) {
+        return res.status(400).json({ success: false, message: 'Invalid year parameter.' });
+    }
+
+    try {
+        // Updated Query using CTEs and Window Functions
+        const query = `
+            WITH Months AS (
+                SELECT TO_CHAR(generate_series(make_date($1::integer, 1, 1), make_date($1::integer, 12, 1), '1 month'::interval), 'YYYY-MM') as month
+            ),
+            MonthlyInvoices AS (
+                SELECT TO_CHAR(InvoiceDate, 'YYYY-MM') as month, SUM(Amount) as totalInvoiced
+                FROM Invoices WHERE EXTRACT(YEAR FROM InvoiceDate) = $1::integer
+                GROUP BY month
+            ),
+            MonthlyPayments AS (
+                SELECT TO_CHAR(PaymentDate, 'YYYY-MM') as month, SUM(AmountPaid) as totalPaidInMonth
+                FROM Payments WHERE EXTRACT(YEAR FROM PaymentDate) = $1::integer
+                GROUP BY month
+            ),
+            CumulativeTotals AS (
+                SELECT
+                    m.month,
+                    COALESCE(mi.totalInvoiced, 0) as monthlyInvoiced,
+                    COALESCE(mp.totalPaidInMonth, 0) as monthlyPaid,
+                    SUM(COALESCE(mi.totalInvoiced, 0)) OVER (ORDER BY m.month) as cumulativeInvoiced,
+                    SUM(COALESCE(mp.totalPaidInMonth, 0)) OVER (ORDER BY m.month) as cumulativePaid
+                FROM Months m
+                LEFT JOIN MonthlyInvoices mi ON m.month = mi.month
+                LEFT JOIN MonthlyPayments mp ON m.month = mp.month
+            )
+            SELECT
+                ct.month,
+                ct.monthlyInvoiced as "totalInvoiced",
+                COALESCE(LAG(ct.cumulativeInvoiced - ct.cumulativePaid, 1) OVER (ORDER BY ct.month), 0) as "balanceBroughtForward",
+                ct.monthlyPaid as "totalPaidInMonth"
+            FROM CumulativeTotals ct
+            ORDER BY ct.month ASC;
+        `;
+        
+        const result = await pool.query(query, [year]);
+
+        // Map results, ensuring correct types
+        const revenueData = result.rows.map(row => ({
+            month: row.month,
+            totalInvoiced: parseFloat(row.totalInvoiced || 0),
+            balanceBroughtForward: parseFloat(row.balanceBroughtForward || 0),
+            totalPaidInMonth: parseFloat(row.totalPaidInMonth || 0)
+        }));
+
+        console.log(`[API GET /reports/revenue] Report data generated for year ${year} with BBF.`);
+        res.json({ success: true, reportData: revenueData });
+
+    } catch (err) {
+        // Simplified fallback for now: just return invoiced if payments fails
+         if (err.code === '42P01') { 
+            console.warn(`[API GET /reports/revenue] Payments table likely missing. Returning only invoiced data. Error: ${err.message}`);
+            try {
+                 const fallbackQuery = `
+                    WITH Months AS (
+                        SELECT TO_CHAR(generate_series(make_date($1::integer, 1, 1), make_date($1::integer, 12, 1), '1 month'::interval), 'YYYY-MM') as month
+                    )
+                    SELECT
+                        m.month,
+                        COALESCE(SUM(i.Amount), 0) as "totalInvoiced",
+                        0 as "balanceBroughtForward",
+                        0 as "totalPaidInMonth"
+                    FROM Months m
+                    LEFT JOIN Invoices i ON TO_CHAR(i.InvoiceDate, 'YYYY-MM') = m.month AND EXTRACT(YEAR FROM i.InvoiceDate) = $1::integer
+                    GROUP BY m.month
+                    ORDER BY m.month ASC;
+                `;
+                const fallbackResult = await pool.query(fallbackQuery, [year]);
+                const fallbackData = fallbackResult.rows.map(row => ({
+                    month: row.month,
+                    totalInvoiced: parseFloat(row.totalInvoiced || 0),
+                    balanceBroughtForward: 0,
+                    totalPaidInMonth: 0
+                }));
+                res.json({ success: true, reportData: fallbackData });
+            } catch (fallbackErr) {
+                console.error("[API GET /reports/revenue] Error during fallback query:", fallbackErr);
+                res.status(500).json({ success: false, message: 'Failed to generate Revenue report.' });
+            }
+        } else {
+             console.error("[API GET /reports/revenue] Error:", err);
+            res.status(500).json({ success: false, message: 'Failed to generate Revenue report.' });
+        }
+    }
+});
+
 module.exports = router; 

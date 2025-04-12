@@ -1,36 +1,45 @@
 import axios from 'axios';
 
-const API_URL = 'http://localhost:3001/api';
+const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
 
 const api = axios.create({
     baseURL: API_URL,
-    headers: {
-        'Content-Type': 'application/json',
-    },
 });
 
-// Add request interceptor to include auth token
+// Add a request interceptor to include the token
 api.interceptors.request.use(
-    (config) => {
-        const token = localStorage.getItem('token');
+    config => {
+        const token = localStorage.getItem('token'); // Get JWT from localStorage
         if (token) {
-            config.headers.Authorization = `Bearer ${token}`;
+            config.headers['Authorization'] = `Bearer ${token}`; // Set Authorization header
+            console.log('[API Interceptor] Token found, adding Authorization header.');
+        } else {
+            console.log('[API Interceptor] No token found.');
         }
         return config;
     },
-    (error) => {
+    error => {
+        console.error('[API Interceptor] Request Error:', error);
         return Promise.reject(error);
     }
 );
 
-// Add response interceptor for error handling
+// Add a response interceptor for potential global error handling (e.g., 401)
 api.interceptors.response.use(
-    (response) => response.data,
-    (error) => {
-        if (error.response) {
-            throw error.response.data;
+    response => response.data, // Directly return response.data on success
+    error => {
+        console.error('[API Interceptor] Response Error:', error.response || error.message || error);
+        // Handle specific errors globally if needed (e.g., redirect on 401)
+        if (error.response && error.response.status === 401) {
+            console.warn('[API Interceptor] Received 401 Unauthorized. Logging out.');
+            // Trigger logout (e.g., clear local storage, redirect to login)
+            localStorage.removeItem('user');
+            localStorage.removeItem('token');
+            // Use window.location instead of navigate outside component scope
+            window.location.href = '/login'; 
         }
-        throw error;
+        // Return the error response data or a structured error object
+        return Promise.reject(error.response?.data || error.message || 'An API error occurred');
     }
 );
 
@@ -556,7 +565,64 @@ export const getOrganizationFinancialSummary = async (orgId) => {
     }
 };
 
-// === NEW SuperAdmin Functions ===
+// --- Reports APIs ---
+
+export const getArAgingReport = async () => {
+    console.log('[API Service] Fetching AR Aging Report data...');
+    try {
+        const response = await api.get('/accounting/reports/ar-aging');
+        // Expecting { success: true, reportData: { buckets: {...}, grandTotal: ... } }
+        if (response && response.success) {
+            return response.reportData;
+        } else {
+            throw new Error(response?.message || 'Failed to fetch AR Aging report data');
+        }
+    } catch (error) {
+        console.error('[API Service] Error fetching AR Aging report:', error);
+        if (error instanceof Error) throw error;
+        throw new Error('Failed to fetch AR Aging report on the server.');
+    }
+};
+
+export const getRevenueReport = async (year) => {
+    console.log(`[API Service] Fetching Revenue Report data for year ${year}...`);
+    try {
+        const response = await api.get('/accounting/reports/revenue', { params: { year } });
+        if (response && response.success) {
+            return response.reportData;
+        } else {
+            throw new Error(response?.message || 'Failed to fetch Revenue report data');
+        }
+    } catch (error) {
+        console.error('[API Service] Error fetching Revenue report:', error);
+        if (error instanceof Error) throw error;
+        throw new Error('Failed to fetch Revenue report on the server.');
+    }
+};
+
+// Admin Reports
+export const getInstructorWorkloadReport = async (startDate, endDate) => {
+    console.log(`[API Service] Fetching Instructor Workload Report data: ${startDate} - ${endDate}`);
+    try {
+        const response = await api.get('/admin/reports/instructor-workload', { 
+            params: { startDate, endDate } 
+        });
+        if (response && response.success) {
+            return response.reportData;
+        } else {
+            throw new Error(response?.message || 'Failed to fetch Instructor Workload report data');
+        }
+    } catch (error) {
+        console.error('[API Service] Error fetching Instructor Workload report:', error);
+        if (error instanceof Error) throw error;
+        throw new Error('Failed to fetch Instructor Workload report on the server.');
+    }
+};
+
+// TODO: Add getCourseSchedulingReport later
+
+// === SuperAdmin Functions ===
+// ...
 
 // --- Organization Management (SuperAdmin) ---
 export const getOrganizations = async () => {

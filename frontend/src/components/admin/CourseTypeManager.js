@@ -121,8 +121,14 @@ function CourseTypeManager() {
                                     <TableCell colSpan={7} align="center">No course types found.</TableCell>
                                 </TableRow>
                             ) : (
-                                courseTypes.map((ct) => (
-                                    <TableRow key={ct.coursetypeid} hover>
+                                courseTypes.map((ct, index) => (
+                                    <TableRow 
+                                        key={ct.coursetypeid} 
+                                        hover
+                                        sx={{ 
+                                            backgroundColor: index % 2 !== 0 ? '#f9f9f9' : 'inherit'
+                                        }}
+                                    >
                                         <TableCell>{ct.coursetypeid}</TableCell>
                                         <TableCell>{ct.coursetypename}</TableCell>
                                         <TableCell>{ct.coursecode}</TableCell>

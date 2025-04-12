@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, Suspense, lazy } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import * as api from '../../services/api';
@@ -24,33 +24,18 @@ import {
     TableHead,
     TableRow,
     Snackbar,
-    Alert,
-    IconButton,
-    Divider,
-    CircularProgress,
-    Checkbox,
-    TextField,
-    FormControl,
-    InputLabel,
-    Select,
-    MenuItem,
     AppBar,
     Toolbar,
 } from '@mui/material';
 import {
-    CalendarMonth as CalendarIcon,
+    CalendarToday as CalendarIcon,
     Class as ClassIcon,
-    ChevronLeft as ChevronLeftIcon,
-    ChevronRight as ChevronRightIcon,
     AssignmentTurnedIn as AttendanceIcon,
     Archive as ArchiveIcon,
-    Logout as LogoutIcon,
     Dashboard as DashboardIcon,
 } from '@mui/icons-material';
-import InstructorArchiveTable from '../tables/InstructorArchiveTable';
-import InstructorDashboard from '../dashboard/InstructorDashboard';
-// Import formatters from utils
 import { formatDate, formatDisplayDate } from '../../utils/formatters';
+import ConfirmDialog from '../dialogs/ConfirmDialog';
 
 const drawerWidth = 240;
 
@@ -81,19 +66,10 @@ const InstructorPortal = () => {
     const [scheduledClasses, setScheduledClasses] = useState([]);
     const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
     const [isLoading, setIsLoading] = useState(true);
-    const [todaysClasses, setTodaysClasses] = useState([]);
-    const [isLoadingTodaysClasses, setIsLoadingTodaysClasses] = useState(false);
-    const [todaysClassesError, setTodaysClassesError] = useState('');
     const [studentsForAttendance, setStudentsForAttendance] = useState([]);
     const [isLoadingStudents, setIsLoadingStudents] = useState(false);
     const [studentsError, setStudentsError] = useState('');
     const [classToManage, setClassToManage] = useState(null);
-    const [newStudent, setNewStudent] = useState({ firstName: '', lastName: '', email: '' });
-    const [isAddingStudent, setIsAddingStudent] = useState(false);
-    const [archivedCourses, setArchivedCourses] = useState([]);
-    const [isLoadingArchive, setIsLoadingArchive] = useState(false);
-    const [archiveError, setArchiveError] = useState('');
-
     const [currentDate, setCurrentDate] = useState(new Date());
 
     const showSnackbar = useCallback((message, severity = 'success') => {
@@ -179,26 +155,6 @@ const InstructorPortal = () => {
         }
     }, [showSnackbar]);
 
-    const loadArchivedCourses = useCallback(async () => {
-        setIsLoadingArchive(true);
-        setArchiveError('');
-        console.log('[loadArchivedCourses] Fetching...');
-        try {
-            const data = await api.getInstructorCompletedCourses();
-            setArchivedCourses(data || []);
-             console.log('[loadArchivedCourses] State updated:', data || []);
-        } catch (err) {
-            console.error('Error loading archived courses:', err);
-            const errorMsg = err.message || 'Failed to load archive.';
-            setArchiveError(errorMsg);
-            showSnackbar(errorMsg, 'error');
-            setArchivedCourses([]);
-        } finally {
-            setIsLoadingArchive(false);
-             console.log('[loadArchivedCourses] Finished.');
-        }
-    }, [showSnackbar]);
-
     useEffect(() => {
         console.log('[useEffect] Running effect, calling loadInitialData.');
         loadInitialData();
@@ -236,7 +192,7 @@ const InstructorPortal = () => {
 
         // Only load data here that is EXCLUSIVE to a specific view
         if (selectedView === 'archive') {
-            loadArchivedCourses();
+            loadInitialData();
         } else if (selectedView === 'attendance') {
              // Auto-select class if only one scheduled
              // The main data (scheduledClasses) should already be loaded by the first effect
@@ -246,7 +202,7 @@ const InstructorPortal = () => {
              }
         }
         // Removed loadInitialData call from here - let the first useEffect handle it
-    }, [selectedView, loadArchivedCourses, scheduledClasses]); // Removed loadInitialData from deps
+    }, [selectedView, loadInitialData, scheduledClasses]); // Removed loadInitialData from deps
 
     useEffect(() => {
         if (classToManage) {
@@ -356,496 +312,70 @@ const InstructorPortal = () => {
         }
     };
 
-    const handleAddStudentChange = (event) => {
-        setNewStudent(prev => ({ ...prev, [event.target.name]: event.target.value }));
-    };
-
-    const handleAddStudentSubmit = async (event) => {
-        event.preventDefault();
-        if (!classToManage || !newStudent.firstName || !newStudent.lastName) {
-            showSnackbar('Class must be selected, and First/Last name required to add student.', 'warning');
-            return;
-        }
-        setIsAddingStudent(true);
-        try {
-            const response = await api.addStudentToCourse(classToManage.courseid, newStudent);
-            if (response.success && response.student) {
-                setStudentsForAttendance(prev => [...prev, { ...response.student, attendance: false }]);
-                setNewStudent({ firstName: '', lastName: '', email: '' });
-                showSnackbar('Student added successfully', 'success');
-            } else {
-                 showSnackbar(response.message || 'Failed to add student', 'error');
-            }
-        } catch (err) {
-             showSnackbar(err.message || 'Error adding student', 'error');
-             console.error('Add student error:', err);
-        } finally {
-             setIsAddingStudent(false);
-        }
-    };
-
-    const handleMarkComplete = async () => {
-        if (!classToManage) return;
-        
-        console.log(`Marking course ${classToManage.courseid} as complete.`);
-        try {
-            const response = await api.markCourseCompleted(classToManage.courseid);
-            if (response.success) {
-                showSnackbar('Course marked as completed!', 'success');
-                setClassToManage(null);
-                loadInitialData();
-                loadArchivedCourses();
-            } else {
-                 showSnackbar(response.message || 'Failed to mark course complete', 'error');
-            }
-        } catch (err) {
-             showSnackbar(err.message || 'Error marking course complete', 'error');
-             console.error('Mark complete error:', err);
-        }
-    };
-
-    const renderAvailabilityCalendar = () => {
-        const displayMonth = currentDate.getMonth();
-        const displayYear = currentDate.getFullYear();
-        const monthName = currentDate.toLocaleString('default', { month: 'long' });
-        const today = new Date(); // Get today's date
-        today.setHours(0, 0, 0, 0); // Normalize to start of day
-
-        console.log('[renderAvailabilityCalendar] Rendering for:', monthName, displayYear);
-        console.log('[renderAvailabilityCalendar] State - availableDates:', availableDates, 'scheduledClasses:', scheduledClasses);
-
-        const firstDay = new Date(displayYear, displayMonth, 1);
-        const lastDay = new Date(displayYear, displayMonth + 1, 0);
-        const daysInMonth = lastDay.getDate();
-        const startingDay = firstDay.getDay();
-
-        const days = [];
-        for (let i = 0; i < startingDay; i++) {
-            days.push(null);
-        }
-        for (let i = 1; i <= daysInMonth; i++) {
-            days.push(new Date(displayYear, displayMonth, i));
-        }
-
-        return (
-            <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', p: 1.5, borderBottom: '1px solid', borderColor: 'divider' }}>
-                    <IconButton onClick={handlePreviousMonth} aria-label="Previous Month" size="small">
-                        <ChevronLeftIcon />
-                    </IconButton>
-                    <Typography variant="h6" component="div">
-                        {monthName} {displayYear}
-                    </Typography>
-                    <IconButton onClick={handleNextMonth} aria-label="Next Month" size="small">
-                        <ChevronRightIcon />
-                    </IconButton>
-                </Box>
-
-                <Box display="flex" flexWrap="wrap">
-                    {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
-                        <Box 
-                            key={day} 
-                            sx={{ 
-                                width: 'calc(100% / 7)',
-                                textAlign: 'center', 
-                                py: 0.5,
-                                borderBottom: '1px solid',
-                                borderColor: 'divider',
-                                boxSizing: 'border-box'
-                            }}
-                        >
-                            <Typography 
-                                variant="caption" 
-                                sx={{ 
-                                    fontWeight: 'bold',
-                                    color: 'text.secondary', 
-                                    textTransform: 'uppercase' 
-                                }}
-                            >
-                                {day}
-                            </Typography>
-                        </Box>
-                    ))}
-
-                    {days.map((date, index) => {
-                        const dateString = date ? date.toDateString() : null;
-                        const isoDateString = date ? date.toISOString().split('T')[0] : null; 
-                        const isToday = date && date.toDateString() === today.toDateString(); // More precise today check
-                        const isPastDate = date && date < today; // Check if date is before today
-                        const isAvailable = availableDates.has(isoDateString);
-                        const isHoliday = isoDateString && ontarioHolidays2024.has(isoDateString); // Check if it's a holiday
-
-                        // Check if a class is scheduled on this date
-                        const scheduledClassOnDate = date && scheduledClasses.find(course => 
-                            course.datescheduled && 
-                            new Date(course.datescheduled).toISOString().split('T')[0] === isoDateString
-                        );
-
-                        // Determine background color and content
-                        let bgColor = undefined;
-                        let dayContent = null;
-                        let cellCursor = date ? 'pointer' : 'default';
-                        let dateColor = isToday ? 'primary.main' : 'text.secondary';
-
-                        if (!date) {
-                            bgColor = '#f5f5f5 !important'; // Blank days
-                        } else if (isPastDate) {
-                            bgColor = '#fafafa !important'; 
-                            dateColor = '#bdbdbd'; 
-                            cellCursor = 'not-allowed'; 
-                        } else if (scheduledClassOnDate) { // Scheduled takes highest priority
-                            bgColor = '#e3f2fd !important'; // Light blue
-                            const orgName = scheduledClassOnDate.organizationname || '';
-                            const orgAbbr = orgName.substring(0, 3).toUpperCase() || 'N/A';
-                            dayContent = (
-                                <Typography 
-                                    variant="caption" 
-                                    component="span" 
-                                    sx={{
-                                        fontWeight: 'bold', 
-                                        color: 'primary.dark', // Darker blue text
-                                        alignSelf: 'center', 
-                                        mt: 'auto' 
-                                    }}
-                                >
-                                    {orgAbbr}
-                                </Typography>
-                            );
-                            dateColor = 'text.primary';
-                            cellCursor = 'not-allowed'; // Don't allow changing availability if scheduled
-                        } else if (isHoliday) { // Holiday overrides Available
-                            bgColor = '#eeeeee !important'; 
-                            dayContent = <Typography variant="caption" component="span" sx={{ fontStyle: 'italic', color: 'text.secondary', alignSelf: 'center', mt: 'auto' }}>H</Typography>; 
-                            dateColor = 'text.primary';
-                            cellCursor = 'not-allowed'; 
-                        } else if (isAvailable) { // Available is lowest priority
-                            bgColor = '#fffde7 !important'; // Yellow
-                            dayContent = <Typography variant="caption" component="span" sx={{ fontWeight: 'bold', color: 'success.main', alignSelf: 'center', mt: 'auto' }}>A</Typography>;
-                            dateColor = 'text.primary';
-                        }
-                        // Highlight today if it doesn't have another specific background
-                        if (isToday && !bgColor && !isPastDate) { // Check !bgColor to avoid overriding others
-                             bgColor = '#e8f5e9 !important'; 
-                             dateColor = 'primary.main';
-                        }
-
-                        return (
-                            <Box 
-                                key={date ? dateString : `blank-${index}`}
-                                // Prevent clicking on holidays, past dates, or scheduled dates
-                                onClick={() => date && !isHoliday && !isPastDate && !scheduledClassOnDate && handleDateClick(date)}
-                                sx={{ 
-                                    width: 'calc(100% / 7)', 
-                                    minHeight: '5em',
-                                    cursor: cellCursor, // Use determined cursor style
-                                    borderRight: (index % 7 < 6) ? '1px solid' : 'none',
-                                    borderBottom: (index < days.length - (days.length % 7)) || days.length % 7 === 0 ? '1px solid' : 'none',
-                                    borderColor: 'divider', 
-                                    boxSizing: 'border-box',
-                                    transition: 'background-color 0.15s',
-                                    '&:hover': date ? {
-                                        bgcolor: 'action.hover' 
-                                    } : {},
-                                    backgroundColor: bgColor, // Apply determined background
-                                }}
-                            >
-                                {date ? (
-                                    <Box 
-                                        sx={{
-                                            width: '100%', 
-                                            height: '100%',
-                                            display: 'flex',
-                                            flexDirection: 'column', 
-                                            alignItems: 'flex-start',
-                                            p: 0.5, 
-                                            border: isToday ? '2px solid' : 'none',
-                                            borderColor: isToday ? 'primary.main' : 'transparent',
-                                            color: dateColor, 
-                                            boxSizing: 'border-box'
-                                        }}
-                                    >
-                                        <Typography 
-                                            variant="caption" 
-                                            component="span"
-                                            sx={{ 
-                                                fontWeight: 'bold',
-                                            }}
-                                        >
-                                            {date.getDate()}
-                                        </Typography>
-                                        {/* Wrapper to center content in remaining space */}
-                                        <Box sx={{ 
-                                            flexGrow: 1, // Make this box fill remaining vertical space
-                                            width: '100%', // Ensure it uses full width for horizontal centering
-                                            display: 'flex', 
-                                            alignItems: 'center', // Vertically center content within this box
-                                            justifyContent: 'center' // Horizontally center content within this box
-                                        }}>
-                                            {/* Ensure dayContent itself doesn't override alignment if it's a Typography */}
-                                            {React.isValidElement(dayContent) ? React.cloneElement(dayContent, { sx: { ...dayContent.props.sx, alignSelf: 'center', mt: 0 } }) : dayContent}
-                                        </Box>
-                                    </Box>
-                                ) : null}
-                            </Box>
-                        );
-                    })}
-                </Box>
-            </Box>
-        );
-    };
-
-    const renderMyClasses = () => {
-        // Get scheduled classes and AVAILABLE DATES (Set) from state
+    const combinedItems = useMemo(() => {
+        console.log('[useMemo] Recalculating combinedItems...');
         const classesToDisplay = Array.isArray(scheduledClasses) ? scheduledClasses : [];
         const currentAvailableDatesSet = (availableDates instanceof Set) ? availableDates : new Set(); 
         const availabilityDatesArray = Array.from(currentAvailableDatesSet);
 
-        // Memoize the creation and sorting of the combined list
-        const combinedItems = useMemo(() => {
-            console.log('[renderMyClasses useMemo] Recalculating combinedItems...'); // Log when calculation runs
-            const combined = [
-                ...classesToDisplay.map(course => {
-                    const scheduledIsoDate = course.datescheduled ? new Date(course.datescheduled).toISOString().split('T')[0] : null;
-                    return {
-                        ...course,
-                        type: 'class',
-                        sortDate: new Date(course.datescheduled || 0), 
-                        displayDate: formatDisplayDate(scheduledIsoDate), 
-                        key: `class-${course.courseid}` 
-                    };
-                }),
-                ...availabilityDatesArray.map(dateString => { 
-                    return {
-                        type: 'availability',
-                        sortDate: new Date(dateString), 
-                        displayDate: formatDisplayDate(dateString), 
-                        dateString: dateString,
-                        key: `avail-${dateString}` 
-                    };
-                })
-            ];
-            // Sort combined items by date
-            combined.sort((a, b) => a.sortDate - b.sortDate);
-            return combined;
-        // Only re-run when scheduledClasses or availableDates references change
-        }, [scheduledClasses, availableDates]); 
-
-        console.log('[renderMyClasses] Combined and sorted items (from memo):', combinedItems);
-
-        return (
-            <TableContainer component={Paper}>
-                <Table>
-                    <TableHead>
-                        <TableRow>
-                            <TableCell sx={{ fontWeight: 'bold' }}>Date</TableCell>
-                            <TableCell sx={{ fontWeight: 'bold' }}>Organization</TableCell>
-                            <TableCell sx={{ fontWeight: 'bold' }}>Location</TableCell>
-                            <TableCell sx={{ fontWeight: 'bold' }}>Course No</TableCell>
-                            <TableCell sx={{ fontWeight: 'bold' }}>Course Type</TableCell>
-                            <TableCell sx={{ fontWeight: 'bold' }}>Students R</TableCell> 
-                            <TableCell sx={{ fontWeight: 'bold' }}>Students A</TableCell>
-                            <TableCell sx={{ fontWeight: 'bold' }}>Notes</TableCell>
-                            <TableCell sx={{ fontWeight: 'bold' }}>Status</TableCell>
-                        </TableRow>
-                    </TableHead>
-                    <TableBody>
-                        {combinedItems.length === 0 ? (
-                             <TableRow>
-                                <TableCell colSpan={9} align="center">No classes scheduled or availability set.</TableCell>
-                             </TableRow>
-                        ) : (
-                            combinedItems.map((item) => (
-                                <TableRow 
-                                    key={item.key}
-                                    sx={{
-                                        // Apply conditional background color
-                                        backgroundColor: item.type === 'class' ? '#e3f2fd' // Light blue for classes (like calendar)
-                                                     : item.type === 'availability' ? '#fffde7' // Light yellow for availability (like calendar)
-                                                     : undefined,
-                                        // Adjust hover style slightly if needed
-                                        '&:hover': {
-                                            backgroundColor: item.type === 'class' ? '#bbdefb' 
-                                                         : item.type === 'availability' ? '#fff9c4' 
-                                                         : 'action.hover'
-                                        }
-                                    }}
-                                >
-                                    <TableCell>{item.displayDate}</TableCell>
-                                    {item.type === 'class' ? (
-                                        <> 
-                                            <TableCell>{item.organizationname || '-'}</TableCell>
-                                            <TableCell>{item.location || '-'}</TableCell>
-                                            <TableCell>{item.coursenumber || '-'}</TableCell>
-                                            <TableCell>{item.coursetypename || '-'}</TableCell>
-                                            <TableCell align="center">{item.studentsregistered ?? '-'}</TableCell>
-                                            <TableCell align="center">{item.studentsattendance ?? '-'}</TableCell>
-                                            <TableCell>{item.notes || '-'}</TableCell>
-                                            <TableCell>{item.status}</TableCell>
-                                        </>
-                                    ) : (
-                                        <> 
-                                            <TableCell></TableCell>
-                                            <TableCell></TableCell>
-                                            <TableCell></TableCell>
-                                            <TableCell></TableCell>
-                                            <TableCell></TableCell>
-                                            <TableCell></TableCell>
-                                            <TableCell></TableCell>
-                                            <TableCell sx={{ color: 'success.main', fontWeight: 'bold' }}>Available</TableCell>
-                                        </>
-                                    )}
-                                </TableRow>
-                            ))
-                        )}
-                    </TableBody>
-                </Table>
-            </TableContainer>
-        );
-    };
-
-    const renderAttendance = () => {
-        if (isLoading) return <CircularProgress />;
-        
-        if (scheduledClasses.length === 0) return <Typography>No classes currently scheduled.</Typography>;
-        
-        const handleClassSelectionChange = (event) => {
-            const selectedId = event.target.value;
-            const selected = scheduledClasses.find(c => c.courseid === selectedId);
-            console.log(`[renderAttendance] Class selected from dropdown: ID=${selectedId}`, selected);
-            setClassToManage(selected || null);
-        };
-
-        if (scheduledClasses.length > 1 && !classToManage) {
-             return (
-                <Box>
-                     <Typography sx={{ mb: 2 }}>Please select a scheduled class to manage attendance:</Typography>
-                     <FormControl fullWidth>
-                         <InputLabel id="class-select-label">Select Class</InputLabel>
-                         <Select
-                             labelId="class-select-label"
-                             value={''}
-                             label="Select Class"
-                             onChange={handleClassSelectionChange}
-                         >
-                             {scheduledClasses.map((course) => (
-                                 <MenuItem key={course.courseid} value={course.courseid}>
-                                     {`${new Date(course.datescheduled).toLocaleDateString()} - ${course.coursenumber} (${course.organizationname})`}
-                                 </MenuItem>
-                             ))}
-                         </Select>
-                     </FormControl>
-                </Box>
-             );
-        }
-
-        if (!classToManage) {
-             console.log('[renderAttendance] Waiting for class selection or auto-selection effect...');
-             return <CircularProgress />;
-        }
-
-        return (
-            <Box>
-                 {scheduledClasses.length > 0 && (
-                     <FormControl fullWidth sx={{ mb: 3 }}>
-                         <InputLabel id="class-select-label">Selected Class</InputLabel>
-                         <Select
-                             labelId="class-select-label"
-                             value={classToManage.courseid}
-                             label="Selected Class"
-                             onChange={handleClassSelectionChange}
-                         >
-                             {scheduledClasses.map((course) => (
-                                 <MenuItem key={course.courseid} value={course.courseid}>
-                                     {`${new Date(course.datescheduled).toLocaleDateString()} - ${course.coursenumber} (${course.organizationname})`}
-                                 </MenuItem>
-                             ))}
-                         </Select>
-                     </FormControl>
-                 )}
-
-                <Typography variant="h6" gutterBottom>
-                    {classToManage.coursetypename} ({classToManage.coursenumber}) - {classToManage.organizationname}
-                </Typography>
-                <Typography variant="body1" gutterBottom>
-                    Date: {new Date(classToManage.datescheduled).toLocaleDateString()} | Location: {classToManage.location}
-                </Typography>
-                
-                <Paper sx={{ my: 2, p: 2 }}>
-                    <Typography variant="subtitle1" gutterBottom>Student List ({studentsForAttendance.length} / {classToManage.studentsregistered ?? '?'})</Typography>
-                    {isLoadingStudents && <CircularProgress size={20}/>}
-                    {studentsError && <Alert severity="error">{studentsError}</Alert>}
-                    <List dense sx={{ maxHeight: 300, overflow: 'auto' }}>
-                        {studentsForAttendance.map((student) => (
-                            <ListItem 
-                                key={student.studentid}
-                                secondaryAction={
-                                    <Checkbox
-                                        edge="end"
-                                        onChange={() => handleAttendanceChange(student.studentid, student.attendance)}
-                                        checked={!!student.attendance}
-                                        inputProps={{ 'aria-labelledby': `checkbox-list-label-${student.studentid}` }}
-                                    />
-                                }
-                                disablePadding
-                            >
-                                <ListItemText 
-                                    id={`checkbox-list-label-${student.studentid}`} 
-                                    primary={`${student.lastname}, ${student.firstname}`} 
-                                    secondary={student.email || 'No email'} 
-                                />
-                            </ListItem>
-                        ))}
-                    </List>
-                </Paper>
-
-                <Paper sx={{ my: 2, p: 2 }}>
-                    <Typography variant="subtitle1" gutterBottom>Add Student</Typography>
-                    <Box component="form" onSubmit={handleAddStudentSubmit} sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
-                        <TextField size="small" label="First Name" name="firstName" value={newStudent.firstName} onChange={handleAddStudentChange} required disabled={isAddingStudent} />
-                        <TextField size="small" label="Last Name" name="lastName" value={newStudent.lastName} onChange={handleAddStudentChange} required disabled={isAddingStudent} />
-                        <TextField size="small" label="Email (Optional)" name="email" type="email" value={newStudent.email} onChange={handleAddStudentChange} disabled={isAddingStudent} />
-                        <Button type="submit" variant="contained" size="small" disabled={isAddingStudent}>
-                            {isAddingStudent ? <CircularProgress size={20} /> : 'Add'}
-                        </Button>
-                    </Box>
-                </Paper>
-
-                <Button 
-                    variant="contained" 
-                    color="primary" 
-                    onClick={handleMarkComplete}
-                    sx={{ mt: 2 }}
-                >
-                    Mark Course as Completed
-                </Button>
-            </Box>
-        );
-    };
-
-    const renderArchive = () => {
-        if (isLoadingArchive) return <CircularProgress />;
-        if (archiveError) return <Alert severity="error">{archiveError}</Alert>;
-        
-        return (
-            <>
-                <Typography variant="h5" gutterBottom>Archived Courses</Typography>
-                <InstructorArchiveTable courses={archivedCourses} />
-            </>
-        );
-    };
+        const combined = [
+            ...classesToDisplay.map(course => {
+                const scheduledIsoDate = course.datescheduled ? new Date(course.datescheduled).toISOString().split('T')[0] : null;
+                return {
+                    ...course,
+                    type: 'class',
+                    sortDate: new Date(course.datescheduled || 0), 
+                    displayDate: formatDisplayDate(scheduledIsoDate), 
+                    key: `class-${course.courseid}` 
+                };
+            }),
+            ...availabilityDatesArray.map(dateString => { 
+                return {
+                    type: 'availability',
+                    sortDate: new Date(dateString), 
+                    displayDate: formatDisplayDate(dateString), 
+                    dateString: dateString,
+                    key: `avail-${dateString}` 
+                };
+            })
+        ];
+        combined.sort((a, b) => a.sortDate - b.sortDate);
+        return combined;
+    }, [scheduledClasses, availableDates]);
 
     const renderSelectedView = () => {
+        console.log(`[renderSelectedView] Rendering view: ${selectedView}`);
         switch (selectedView) {
             case 'dashboard':
                 return <InstructorDashboard scheduledClasses={scheduledClasses} />;
             case 'availability':
-                return renderAvailabilityCalendar();
+                return <AvailabilityView 
+                            currentDate={currentDate}
+                            handlePreviousMonth={handlePreviousMonth}
+                            handleNextMonth={handleNextMonth}
+                            availableDates={availableDates}
+                            scheduledClasses={scheduledClasses}
+                            ontarioHolidays2024={ontarioHolidays2024}
+                            handleDateClick={handleDateClick}
+                       />;
             case 'classes':
-                return renderMyClasses();
+                return <MyClassesView 
+                            combinedItems={combinedItems}
+                            onAttendanceClick={handleAttendanceClick} // Pass handler
+                       />;
             case 'attendance':
-                return renderAttendance();
+                return <AttendanceView 
+                            scheduledClasses={scheduledClasses}
+                            classToManage={classToManage}
+                            handleClassChange={handleClassChange}
+                            studentsForAttendance={studentsForAttendance}
+                            handleAttendanceChange={handleAttendanceChange}
+                            isLoadingStudents={isLoadingStudents}
+                            studentsError={studentsError}
+                            handleMarkCompleteClick={handleMarkCompleteClick}
+                       />;
             case 'archive':
-                return renderArchive();
+                return <InstructorArchiveTable courses={archivedCourses} />;
             default:
                 return <Typography>Select a view</Typography>;
         }
@@ -1041,7 +571,14 @@ const InstructorPortal = () => {
                         <Typography>Loading data...</Typography>
                     ) : (
                         <>
-                            {renderSelectedView()}
+                            {/* Use Suspense to wrap the view rendering */}
+                            <Suspense fallback={
+                                <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '60vh' }}>
+                                    <CircularProgress />
+                                </Box>
+                            }>
+                                {renderSelectedView()}
+                            </Suspense>
                         </>
                     )}
                 </Container>

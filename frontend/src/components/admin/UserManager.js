@@ -148,8 +148,14 @@ function UserManager() {
                                     <TableCell colSpan={9} align="center">No users found.</TableCell>
                                 </TableRow>
                             ) : (
-                                users.map((user) => (
-                                    <TableRow key={user.userid} hover>
+                                users.map((user, index) => (
+                                    <TableRow 
+                                        key={user.userid} 
+                                        hover
+                                        sx={{ 
+                                            backgroundColor: index % 2 !== 0 ? '#f9f9f9' : 'inherit'
+                                        }}
+                                    >
                                         <TableCell>{user.userid}</TableCell>
                                         <TableCell>{user.username}</TableCell>
                                         <TableCell>{user.role}</TableCell>

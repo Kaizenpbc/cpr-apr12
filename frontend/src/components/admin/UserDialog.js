@@ -171,19 +171,20 @@ function UserDialog({ open, onClose, onSave, user, existingUsers = [] }) {
         } catch (err) {
             console.error('Save user error:', err);
             const message = err.message || 'Failed to save user.';
-            setError('Failed to save. Please fix highlighted field(s).'); // Generic error
             
-            // Highlight fields based on backend error (redundant with client checks, but good fallback)
-            const tempFieldErrors = {};
+            // Try to parse backend error for specific fields
+            const newFieldErrors = {};
             if (message.toLowerCase().includes('username already exists')) {
-                 tempFieldErrors.username = "Username already exists.";
+                 newFieldErrors.username = "Username already exists.";
             } else if (message.toLowerCase().includes('email already exists')) {
-                 tempFieldErrors.email = "Email already exists.";
+                 newFieldErrors.email = "Email already exists.";
             } else if (message.toLowerCase().includes('invalid organization id')) {
-                 tempFieldErrors.organizationId = "Selected organization is invalid.";
-            }
-            // If backend error wasn't specific, keep client-side errors
-            setFieldErrors(prev => ({...prev, ...tempFieldErrors})); 
+                 newFieldErrors.organizationId = "Selected organization is invalid.";
+            } // Add more specific checks if backend provides them
+            
+             // Set general error and specific field errors
+            setError(message); // Still show general error message
+            setFieldErrors(prev => ({...prev, ...newFieldErrors})); // Merge with existing client errors
         } finally {
             setLoading(false);
         }
