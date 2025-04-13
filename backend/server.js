@@ -3,10 +3,25 @@ const cors = require('cors');
 const http = require('http'); // Import Node's http module
 const { Server } = require("socket.io"); // Import socket.io Server
 require('dotenv').config();
+const rateLimit = require('express-rate-limit');
+const morgan = require('morgan');
+const helmet = require('helmet');
+const { body, validationResult } = require('express-validator');
+const session = require('express-session');
+const pgSession = require('connect-pg-simple')(session);
+const csrf = require('csurf');
+const xss = require('xss-clean');
+const cookieParser = require('cookie-parser');
+console.log('[Server Start] Cookie parser imported');
+
+// Mask the actual secret in logs
+if (process.env.JWT_SECRET) { console.log(`[Server Start] Secret starts with: ${process.env.JWT_SECRET.substring(0, 5)}...`); }
 const { pool } = require('./db'); // Import the pool for logging
+const bcrypt = require('bcrypt');
+const jwt = require('jsonwebtoken');
 
 // Import route handlers
-// const authRoutes = require('./routes/auth'); // Assuming this structure
+const authRoutes = require('./routes/authRoutes'); // Import auth routes
 const organizationRoutes = require('./routes/organizations');
 const userRoutes = require('./routes/users');
 const courseTypeRoutes = require('./routes/courseTypes');
@@ -15,6 +30,8 @@ const accountingRoutes = require('./routes/accounting');
 const courseRoutes = require('./routes/courses'); // Add this
 const instructorRoutes = require('./routes/instructors'); // Import instructor routes
 const authenticateToken = require('./middleware/authenticateToken'); // Import middleware
+// Import specific checkers from checkRole
+const { checkSuperAdmin, checkAdminOrSuperAdmin, checkAccountingAccess } = require('./middleware/checkRole');
 
 console.log('[Server Start] Required modules loaded.'); // <<< ADD LOG
 
@@ -30,7 +47,10 @@ console.log('Database pool error listener attached.');
 
 // Attach socket.io to the HTTP server
 const io = new Server(server, {
-  cors: { origin: "*" } // Simplified CORS for testing
+  cors: {
+    origin: "http://localhost:3000",
+    methods: ["GET", "POST"]
+  }
 });
 console.log('[Server Start] Socket.IO server attached to HTTP server.'); // <<< ADD LOG
 
@@ -39,23 +59,100 @@ console.log('[Server Start] Socket.IO server attached to HTTP server.'); // <<< 
 // Simple in-memory store for user sockets (Replace with Redis/DB in production)
 const userSockets = new Map(); 
 
-// Apply Middleware
-console.log('[Server Start] Applying middleware (CORS, JSON)...');
-app.use(cors());
+// Core middleware - ORDER IS CRITICAL
+app.use(cors({
+    origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token']
+}));
+console.log('[Server Start] CORS configured');
+
+// Body parsers
 app.use(express.json());
-// Note: authenticateToken is applied per-route or per-router
-console.log('[Server Start] Core middleware applied.'); // <<< ADD LOG
+app.use(express.urlencoded({ extended: true }));
+console.log('[Server Start] Body parsers configured');
+
+// Cookie parser MUST be before session and CSRF
+app.use(cookieParser());
+console.log('[Server Start] Cookie parser configured');
+
+// Session configuration
+app.use(session({
+    store: new pgSession({
+        pool: pool,
+        tableName: 'user_sessions'
+    }),
+    secret: process.env.SESSION_SECRET || 'your-secret-key',
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+        secure: process.env.NODE_ENV === 'production',
+        httpOnly: true,
+        sameSite: 'strict',
+        maxAge: 24 * 60 * 60 * 1000 // 24 hours
+    }
+}));
+console.log('[Server Start] Session configured');
+
+// CSRF Protection
+const csrfProtection = csrf({ 
+  cookie: {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'strict'
+  }
+});
+
+// Initialize CSRF middleware
+app.use(csrfProtection);
+
+// Apply CSRF protection to all routes except GET requests and the CSRF token endpoint
+app.use((req, res, next) => {
+  if (req.method === 'GET' || req.path === '/api/csrf-token') {
+    return next();
+  }
+  csrfProtection(req, res, next);
+});
+
+// CSRF token endpoint
+app.get('/api/csrf-token', (req, res) => {
+  try {
+    console.log('[CSRF] Generating token...');
+    const token = req.csrfToken();
+    console.log('[CSRF] Token generated successfully');
+    res.json({ token });
+  } catch (error) {
+    console.error('[CSRF] Error generating token:', error);
+    res.status(500).json({ error: 'Failed to generate CSRF token' });
+  }
+});
+
+// Content Security Policy
+app.use(helmet.contentSecurityPolicy({
+    directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'", "'unsafe-inline'"],
+        styleSrc: ["'self'", "'unsafe-inline'"],
+        imgSrc: ["'self'", "data:", "https:"],
+        connectSrc: ["'self'"],
+        fontSrc: ["'self'"],
+        objectSrc: ["'none'"],
+        mediaSrc: ["'self'"],
+        frameSrc: ["'none'"]
+    }
+}));
 
 // Mount route handlers
-// app.use('/api/auth', authRoutes); // Example
 console.log('[Server Start] Mounting route handlers...');
 app.use('/api/organizations', organizationRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/course-types', courseTypeRoutes);
 app.use('/api/pricing-rules', pricingRuleRoutes);
+app.use('/api/auth', authRoutes); // Use the imported auth routes
 app.use('/api/accounting', accountingRoutes);
-app.use('/api/courses', courseRoutes); // Add this (ensure base path is correct)
-app.use('/api/instructor', instructorRoutes); // Mount instructor routes
+app.use('/api/courses', courseRoutes);
+app.use('/api/instructors', instructorRoutes);
 console.log('[Server Start] Route handlers mounted.'); // <<< ADD LOG
 
 // Test database connection - Enhanced
@@ -66,69 +163,75 @@ app.get('/api/test', async (req, res) => {
         console.log('Testing database connection...');
         const dbResult = await pool.query('SELECT NOW()');
         console.log('Database test query successful:', dbResult.rows[0]);
-        res.json({ message: 'Backend is running!', dbTime: dbResult.rows[0].now });
+        res.json({ message: 'Minimal Backend is running!', dbTime: dbResult.rows[0].now });
     } catch (dbError) {
         console.error('[API TEST ERROR] Database query failed:', dbError);
-        res.status(500).json({ message: 'Backend running, but DB connection failed.' });
+        res.status(500).json({ message: 'Minimal Backend running, but DB connection failed.' });
     }
 });
 
-// Authentication endpoint
-app.post('/api/auth/login', async (req, res) => {
-    const { username, password } = req.body;
-    
-    if (!username || !password) {
-        return res.status(400).json({ success: false, message: 'Username and password are required' });
-    }
+// Rate limiting configuration
+const loginLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 5, // Limit each IP to 5 login attempts per windowMs
+    message: 'Too many login attempts, please try again later.',
+    standardHeaders: true,
+    legacyHeaders: false,
+});
 
+// Input validation middleware
+const validateLogin = [
+    body('username').trim().isLength({ min: 3 }).escape(),
+    body('password').isLength({ min: 6 }),
+    (req, res, next) => {
+        const errors = validationResult(req);
+        if (!errors.isEmpty()) {
+            return res.status(400).json({ errors: errors.array() });
+        }
+        next();
+    }
+];
+
+// Authentication endpoint
+app.post('/api/login', loginLimiter, validateLogin, async (req, res) => {
+    const { username, password } = req.body;
     try {
-        const result = await pool.query(
-            'SELECT UserID, Username, Role, FirstName, LastName, OrganizationID FROM Users WHERE Username = $1 AND Password = $2',
-            [username, password]
+        const result = await pool.query('SELECT * FROM users WHERE username = $1', [username]);
+        if (result.rows.length === 0) {
+            return res.status(401).json({ error: 'Invalid credentials' });
+        }
+
+        const user = result.rows[0];
+        const isValidPassword = await bcrypt.compare(password, user.password);
+
+        if (!isValidPassword) {
+            return res.status(401).json({ error: 'Invalid credentials' });
+        }
+
+        // Generate JWT token
+        const token = jwt.sign(
+            { 
+                id: user.id, 
+                username: user.username, 
+                role: user.role,
+                organization_id: user.organization_id 
+            },
+            process.env.JWT_SECRET,
+            { expiresIn: '24h' }
         );
 
-        if (result.rows.length > 0) {
-            const user = result.rows[0];
-            const token = user.userid.toString();
-            
-            let organizationName = null;
-            // If user has an organizationId, fetch the organization name
-            if (user.organizationid) {
-                try {
-                    const orgResult = await pool.query('SELECT OrganizationName FROM organizations WHERE OrganizationID = $1', [user.organizationid]);
-                    if (orgResult.rows.length > 0) {
-                        organizationName = orgResult.rows[0].organizationname; // Use lowercase key returned by pg
-                    }
-                } catch (orgErr) {
-                    console.error("Error fetching organization name during login:", orgErr);
-                    // Don't fail login if org name fetch fails, just leave it null
-                }
-            }
-
-            // <<< DETAILED LOGGING START >>>
-            const userPayload = {
-                userid: user.userid,
+        res.json({ 
+            token,
+            user: {
+                id: user.id,
                 username: user.username,
                 role: user.role,
-                firstname: user.firstname,
-                lastname: user.lastname,
-                organizationId: user.organizationid,
-                organizationName: organizationName // This might be null
-            };
-            console.log('[API POST /auth/login] User object being sent to frontend:', JSON.stringify(userPayload, null, 2));
-            // <<< DETAILED LOGGING END >>>
-            
-            res.json({ 
-                success: true, 
-                user: userPayload, // Send the prepared payload
-                token
-            });
-        } else {
-            res.status(401).json({ success: false, message: 'Invalid credentials' });
-        }
-    } catch (err) {
-        console.error('Login error:', err);
-        res.status(500).json({ success: false, message: 'Internal server error' });
+                organization_id: user.organization_id
+            }
+        });
+    } catch (error) {
+        console.error('Login error:', error);
+        res.status(500).json({ error: 'Internal server error' });
     }
 });
 
@@ -463,7 +566,7 @@ app.get('/api/admin/instructor-dashboard', authenticateToken, async (req, res) =
         dashboardData.sort((a, b) => new Date(a.date) - new Date(b.date) || a.instructorName.localeCompare(b.instructorName));
 
         console.log('[API GET /admin/instructor-dashboard] Data processing complete.'); // <<< LOG
-        
+
         res.json({ success: true, data: dashboardData });
 
     } catch (err) {
@@ -534,7 +637,7 @@ app.get('/api/admin/completed-courses', authenticateToken, async (req, res) => {
         const result = await pool.query(`
             SELECT 
                 c.CourseID, c.CreatedAt AS SystemDate, c.DateScheduled, c.CourseNumber, 
-                c.Location, c.StudentsRegistered, c.Notes, c.Status,
+                c.Location, c.StudentsRegistered, c.Notes, c.Status, 
                 o.OrganizationName,
                 ct.CourseTypeName,
                 CONCAT(u.FirstName, ' ', u.LastName) as InstructorName,
@@ -679,7 +782,7 @@ app.put('/api/students/:studentId/attendance', authenticateToken, async (req, re
     console.log(`[API PUT /students/${studentId}/attendance] Request received. Attended: ${attended}, UserID: ${userId}`);
 
     if (typeof attended !== 'boolean') {
-        return res.status(400).json({ success: false, message: 'Invalid attendance value provided.' });
+         return res.status(400).json({ success: false, message: 'Invalid attendance value provided.' });
     }
     if (!userId) {
          return res.status(401).json({ success: false, message: 'Authentication required.' });
@@ -691,7 +794,7 @@ app.put('/api/students/:studentId/attendance', authenticateToken, async (req, re
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
-
+        
         // 1. Get CourseID associated with the student
         const studentCourse = await client.query('SELECT CourseID FROM Students WHERE StudentID = $1', [studentId]);
         if (studentCourse.rows.length === 0) {
@@ -990,54 +1093,6 @@ app.put('/api/admin/schedule-course/:courseId', authenticateToken, async (req, r
     }
 });
 
-// --- Socket.IO Connection Handling (Enhanced Logging) ---
-io.on('connection', (socket) => {
-    console.log(`[Socket.IO] Connection established: ${socket.id}`);
-
-    socket.on('identify', (userId) => {
-        try {
-            if (!userId) {
-                console.warn(`[Socket.IO] Identify event received with invalid userId from ${socket.id}`);
-                return;
-            }
-            const userIdStr = userId.toString(); // Ensure string key
-            console.log(`[Socket.IO] Socket ${socket.id} identified as UserID: ${userIdStr}`);
-            userSockets.set(userIdStr, socket.id);
-            console.log(`[Socket.IO] UserID ${userIdStr} added to map. Current map size: ${userSockets.size}`);
-            socket.join(userIdStr); // Join room based on userId
-        } catch (error) {
-            console.error(`[Socket.IO] Error in 'identify' handler for socket ${socket.id}:`, error);
-        }
-    });
-
-    socket.on('disconnect', (reason) => {
-        try {
-            console.log(`[Socket.IO] Socket disconnected: ${socket.id}, Reason: ${reason}`);
-            let userIdToRemove = null;
-            for (const [userId, socketId] of userSockets.entries()) {
-                if (socketId === socket.id) {
-                    userIdToRemove = userId;
-                    break;
-                }
-            }
-            if (userIdToRemove !== null) {
-                userSockets.delete(userIdToRemove);
-                console.log(`[Socket.IO] Removed UserID ${userIdToRemove} from socket map. Current map size: ${userSockets.size}`);
-            } else {
-                console.log(`[Socket.IO] Disconnected socket ${socket.id} not found in map.`);
-            }
-        } catch (error) {
-             console.error(`[Socket.IO] Error in 'disconnect' handler for socket ${socket.id}:`, error);
-        }
-    });
-
-    socket.on('error', (err) => {
-        console.error(`[Socket.IO] Error on socket ${socket.id}:`, err);
-    });
-});
-console.log('[Server Start] Socket.IO connection handler attached.'); // <<< ADD LOG
-// --- End Socket.IO --- 
-
 // --- Global Error Handlers ---
 process.on('uncaughtException', (err, origin) => {
   console.error('<<<<< [FATAL] Uncaught Exception Caught! >>>>>'); // Make it stand out
@@ -1068,7 +1123,7 @@ console.log(`[Server Start] Attempting to listen on port ${port}...`); // <<< AD
 try {
   console.log(`Attempting to start server on port ${port}...`);
   server.listen(port, '0.0.0.0', () => { 
-    console.log(`---> Server successfully running on port ${port} <---`);
+    console.log(`---> Server successfully running on port ${port} <---`); 
     console.log('Ready for connections.');
   });
 } catch (listenError) {
@@ -1149,3 +1204,51 @@ app.get('/api/admin/reports/instructor-workload', authenticateToken, checkAdminO
 });
 
 // TODO: Add /api/admin/reports/course-scheduling endpoint later
+
+// --- UNCOMMENT SOCKET.IO LOGIC ---
+io.on('connection', (socket) => {
+    console.log('[Socket.IO] Connection established:', socket.id);
+    // Re-enable identify, disconnect, error handlers
+    socket.on('identify', (userId) => {
+        console.log('[Socket.IO] Socket', socket.id, 'identified as UserID:', userId);
+        userSockets.set(userId, socket.id);
+        console.log('[Socket.IO] UserID', userId, 'added to map. Current map size:', userSockets.size);
+    });
+
+    socket.on('disconnect', () => {
+        console.log('[Socket.IO] Socket disconnected:', socket.id, ', Reason:', socket.disconnectReason);
+        // Remove the user from the map
+        for (const [userId, socketId] of userSockets.entries()) {
+            if (socketId === socket.id) {
+                userSockets.delete(userId);
+                console.log('[Socket.IO] Removed UserID', userId, 'from socket map. Current map size:', userSockets.size);
+                break;
+            }
+        }
+    });
+
+    socket.on('error', (err) => {
+        console.error(`[Socket.IO] Error on socket ${socket.id}:`, err);
+    });
+});
+console.log('[Server Start] Socket.IO connection handler attached.'); 
+
+// Error handling middleware
+app.use((err, req, res, next) => {
+    console.error('Error:', err);
+    
+    // Handle specific error types
+    if (err.name === 'ValidationError') {
+        return res.status(400).json({ error: err.message });
+    }
+    
+    if (err.name === 'UnauthorizedError') {
+        return res.status(401).json({ error: 'Invalid token' });
+    }
+    
+    // Default error
+    res.status(500).json({ 
+        error: 'Internal server error',
+        message: process.env.NODE_ENV === 'development' ? err.message : 'An unexpected error occurred'
+    });
+});

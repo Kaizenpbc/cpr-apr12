@@ -1,56 +1,51 @@
+const jwt = require('jsonwebtoken');
 const { pool } = require('../db');
 
 // Basic Authentication Middleware (Needs proper token validation, e.g., JWT)
 const authenticateToken = async (req, res, next) => {
     const authHeader = req.headers['authorization'];
-    const token = authHeader && authHeader.split(' ')[1]; // Expecting "Bearer <UserID>"
+    const token = authHeader && authHeader.split(' ')[1]; // Expecting "Bearer <token>"
 
     if (!token) {
         console.warn('[AuthN] No token provided');
         // Allow access but without user info, OR return 401 depending on route needs
         // For protected routes, the role check later will deny access
-        // return res.status(401).json({ success: false, message: 'No token provided' });
-        req.user = null; // Indicate no authenticated user
-        return next(); 
+        return res.status(401).json({ message: 'No token provided' });
     }
 
     try {
-        // TEMPORARY: Assume token IS the UserID for now
-        const userId = parseInt(token, 10);
-        if (isNaN(userId)) {
-            console.warn(`[AuthN] Invalid token format (expected UserID): ${token}`);
-            req.user = null; // Indicate invalid token
-            return next(); 
-        }
-
-        // Fetch user details from DB based on UserID
-        const userResult = await pool.query(
-            'SELECT UserID, Username, Role, FirstName, LastName, OrganizationID FROM Users WHERE UserID = $1',
-            [userId]
+        // Verify and decode the JWT token
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        
+        // Get user from database using token
+        const user = await pool.oneOrNone(
+            `SELECT u.userid, u.username, u.role, u.firstname, u.lastname, u.organization_id, o.organization_name
+             FROM users u
+             LEFT JOIN organizations o ON u.organization_id = o.organization_id
+             WHERE u.userid = $1`,
+            [decoded.userid]
         );
 
-        if (userResult.rows.length === 0) {
-            console.warn(`[AuthN] User not found for token (UserID): ${userId}`);
-            req.user = null; // Indicate user not found
-            return next(); 
+        if (!user) {
+            console.warn(`[AuthN] User not found for token (UserID): ${decoded.userid}`);
+            return res.status(401).json({ message: 'User not found' });
         }
         
-        // Attach user info to the request object
+        // Attach user to request
         req.user = {
-            userid: userResult.rows[0].userid,
-            username: userResult.rows[0].username,
-            role: userResult.rows[0].role,
-            firstname: userResult.rows[0].firstname,
-            lastname: userResult.rows[0].lastname,
-            organizationId: userResult.rows[0].organizationid // May be null
+            userid: user.userid,
+            username: user.username,
+            role: user.role,
+            firstName: user.firstname,
+            lastName: user.lastname,
+            organizationId: user.organization_id,
+            organizationName: user.organization_name
         };        
         console.log(`[AuthN] User authenticated: ID=${req.user.userid}, Role=${req.user.role}`);
         next(); // Proceed to the next middleware or route handler
-    } catch (err) {
-        console.error('[AuthN] Authentication error:', err);
-        // Don't send response here, let route handler decide or use error middleware
-        req.user = null; // Indicate error during auth
-        next(); // Proceed, maybe to an error handler or let role check fail
+    } catch (error) {
+        console.error('[AuthN] Authentication error:', error);
+        return res.status(500).json({ message: 'Error authenticating user' });
     }
 };
 

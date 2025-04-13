@@ -28,7 +28,23 @@ router.get('/', authenticateToken, async (req, res) => {
 
     console.log(`[API GET /organizations] Request received by UserID: ${req.user.userid}, Role: ${req.user.role}`);
     try {
-        const result = await pool.query('SELECT * FROM Organizations ORDER BY OrganizationName');
+        const result = await pool.query(
+            `SELECT 
+                organization_id,
+                organization_name,
+                contact_name,
+                contact_email,
+                contact_phone,
+                address_street,
+                address_city,
+                address_province,
+                address_postal_code,
+                ceo_name,
+                ceo_phone,
+                ceo_email
+               FROM organizations
+               ORDER BY organization_name`
+        );
         res.json({ success: true, organizations: result.rows });
     } catch (err) {
         console.error('[API GET /organizations] Error:', err);
@@ -40,39 +56,43 @@ router.get('/', authenticateToken, async (req, res) => {
 router.post('/', authenticateToken, checkSuperAdmin, async (req, res) => {
     console.log('[API POST /organizations] Request received with body:', req.body);
     const {
-        organizationname, contactname, contactemail, contactphone,
-        addressstreet, addresscity, addressprovince, addresspostalcode,
-        ceoname, ceophone, ceoemail
+        organization_name, contact_name, contact_email, contact_phone,
+        address_street, address_city, address_province, address_postal_code,
+        ceo_name, ceo_phone, ceo_email
     } = req.body;
 
     // Basic validation
-    if (!organizationname) {
+    if (!organization_name) {
         return res.status(400).json({ success: false, message: 'Organization Name is required.' });
     }
 
     try {
         const result = await pool.query(
-            `INSERT INTO Organizations (
-                OrganizationName, ContactName, ContactEmail, ContactPhone, 
-                AddressStreet, AddressCity, AddressProvince, AddressPostalCode, 
-                CEOName, CEOPhone, CEOEmail
-             ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) 
-             RETURNING *`,
-            [
-                organizationname, contactname, contactemail, contactphone,
-                addressstreet, addresscity, addressprovince, addresspostalcode,
-                ceoname, ceophone, ceoemail
-            ]
+            `INSERT INTO organizations (
+                organization_name,
+                contact_name,
+                contact_email,
+                contact_phone,
+                address_street,
+                address_city,
+                address_province,
+                address_postal_code,
+                ceo_name,
+                ceo_phone,
+                ceo_email
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+            RETURNING organization_id`,
+            [organization_name, contact_name, contact_email, contact_phone, address_street, address_city, address_province, address_postal_code, ceo_name, ceo_phone, ceo_email]
         );
         
         const newOrg = result.rows[0];
         console.log('[API POST /organizations] Organization created successfully:', newOrg);
-        res.status(201).json({ success: true, message: 'Organization created successfully.', organization: newOrg });
+        res.status(201).json({ success: true, message: 'Organization created successfully.', organization_id: newOrg.organization_id });
 
     } catch (err) {
         console.error('[API POST /organizations] Error:', err);
         // Check for unique constraint violation (common error)
-        if (err.code === '23505' && err.constraint === 'organizations_organizationname_key') {
+        if (err.code === '23505' && err.constraint === 'organizations_organization_name_key') {
             return res.status(409).json({ success: false, message: 'Organization with this name already exists.' });
         }
         res.status(500).json({ success: false, message: 'Failed to create organization' });
@@ -89,7 +109,24 @@ router.get('/:id', authenticateToken, checkSuperAdmin, async (req, res) => {
     }
 
     try {
-        const result = await pool.query('SELECT * FROM Organizations WHERE OrganizationID = $1', [id]);
+        const result = await pool.query(
+            `SELECT 
+                organization_id,
+                organization_name,
+                contact_name,
+                contact_email,
+                contact_phone,
+                address_street,
+                address_city,
+                address_province,
+                address_postal_code,
+                ceo_name,
+                ceo_phone,
+                ceo_email
+               FROM organizations
+               WHERE organization_id = $1`,
+            [id]
+        );
         if (result.rowCount === 0) {
             return res.status(404).json({ success: false, message: 'Organization not found.' });
         }
@@ -110,30 +147,32 @@ router.put('/:id', authenticateToken, checkSuperAdmin, async (req, res) => {
     }
 
     const {
-        organizationname, contactname, contactemail, contactphone,
-        addressstreet, addresscity, addressprovince, addresspostalcode,
-        ceoname, ceophone, ceoemail
+        organization_name, contact_name, contact_email, contact_phone,
+        address_street, address_city, address_province, address_postal_code,
+        ceo_name, ceo_phone, ceo_email
     } = req.body;
 
-    if (!organizationname) {
+    if (!organization_name) {
         return res.status(400).json({ success: false, message: 'Organization Name is required for update.' });
     }
 
     try {
         const result = await pool.query(
-            `UPDATE Organizations SET 
-                OrganizationName = $1, ContactName = $2, ContactEmail = $3, ContactPhone = $4, 
-                AddressStreet = $5, AddressCity = $6, AddressProvince = $7, AddressPostalCode = $8, 
-                CEOName = $9, CEOPhone = $10, CEOEmail = $11, 
-                UpdatedAt = CURRENT_TIMESTAMP
-             WHERE OrganizationID = $12
-             RETURNING *`,
-            [
-                organizationname, contactname, contactemail, contactphone, 
-                addressstreet, addresscity, addressprovince, addresspostalcode, 
-                ceoname, ceophone, ceoemail, 
-                id 
-            ]
+            `UPDATE organizations
+             SET organization_name = $1,
+                 contact_name = $2,
+                 contact_email = $3,
+                 contact_phone = $4,
+                 address_street = $5,
+                 address_city = $6,
+                 address_province = $7,
+                 address_postal_code = $8,
+                 ceo_name = $9,
+                 ceo_phone = $10,
+                 ceo_email = $11
+             WHERE organization_id = $12
+             RETURNING organization_id`,
+            [organization_name, contact_name, contact_email, contact_phone, address_street, address_city, address_province, address_postal_code, ceo_name, ceo_phone, ceo_email, id]
         );
 
         if (result.rowCount === 0) {
@@ -146,7 +185,7 @@ router.put('/:id', authenticateToken, checkSuperAdmin, async (req, res) => {
 
     } catch (err) {
         console.error(`[API PUT /organizations/${id}] Error:`, err);
-        if (err.code === '23505' && err.constraint === 'organizations_organizationname_key') {
+        if (err.code === '23505' && err.constraint === 'organizations_organization_name_key') {
             return res.status(409).json({ success: false, message: 'Another organization with this name already exists.' });
         }
         res.status(500).json({ success: false, message: 'Failed to update organization' });
@@ -182,7 +221,7 @@ router.delete('/:id', authenticateToken, checkSuperAdmin, async (req, res) => {
         }
 
         // 3. Perform the deletion if no dependencies found
-        const result = await client.query('DELETE FROM Organizations WHERE OrganizationID = $1 RETURNING OrganizationID', [id]);
+        const result = await client.query('DELETE FROM organizations WHERE organization_id = $1 RETURNING organization_id', [id]);
 
         if (result.rowCount === 0) {
             await client.query('ROLLBACK'); // Though technically not needed as nothing was deleted
