@@ -4,62 +4,105 @@ const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
 
 const api = axios.create({
     baseURL: API_URL,
+    withCredentials: true // Enable sending cookies
 });
 
-// Add a request interceptor to include the token
-api.interceptors.request.use(
-    config => {
-        const token = localStorage.getItem('token'); // Get JWT from localStorage
-        if (token) {
-            config.headers['Authorization'] = `Bearer ${token}`; // Set Authorization header
-            console.log('[API Interceptor] Token found, adding Authorization header.');
-        } else {
-            console.log('[API Interceptor] No token found.');
+// Function to fetch CSRF token
+export const fetchCsrfToken = async () => {
+    console.log('[API] Fetching CSRF token...');
+    try {
+        const response = await axios.get(`${API_URL}/csrf-token`, {
+            withCredentials: true
+        });
+        console.log('[API] CSRF token response:', response.data);
+        if (!response.data || !response.data.token) {
+            throw new Error('Invalid CSRF token response');
         }
+        return response.data.token;
+    } catch (error) {
+        console.error('[API] Error fetching CSRF token:', error);
+        throw error;
+    }
+};
+
+// Add a request interceptor to include the token and CSRF token
+api.interceptors.request.use(
+    async (config) => {
+        const token = localStorage.getItem('token');
+        const csrfToken = document.cookie
+            .split('; ')
+            .find(row => row.startsWith('csrf-token='))
+            ?.split('=')[1];
+
+        if (token) {
+            config.headers['Authorization'] = `Bearer ${token}`;
+        }
+
+        // For non-GET requests, ensure we have a CSRF token
+        if (config.method !== 'get' && !csrfToken) {
+            try {
+                const newToken = await fetchCsrfToken();
+                config.headers['X-CSRF-Token'] = newToken;
+            } catch (error) {
+                console.error('Failed to get CSRF token:', error);
+                return Promise.reject(error);
+            }
+        } else if (csrfToken) {
+            config.headers['X-CSRF-Token'] = csrfToken;
+        }
+
         return config;
     },
-    error => {
-        console.error('[API Interceptor] Request Error:', error);
+    (error) => {
         return Promise.reject(error);
     }
 );
 
-// Add a response interceptor for potential global error handling (e.g., 401)
+// Add a response interceptor for potential global error handling
 api.interceptors.response.use(
-    response => response.data, // Directly return response.data on success
-    error => {
-        console.error('[API Interceptor] Response Error:', error.response || error.message || error);
-        // Handle specific errors globally if needed (e.g., redirect on 401)
-        if (error.response && error.response.status === 401) {
-            console.warn('[API Interceptor] Received 401 Unauthorized. Logging out.');
-            // Trigger logout (e.g., clear local storage, redirect to login)
+    (response) => {
+        const token = response.headers['x-csrf-token'];
+        if (token) {
+            document.cookie = `csrf-token=${token}; path=/; secure; samesite=strict`;
+        }
+        return response.data;
+    },
+    (error) => {
+        if (error.response?.status === 403 && error.response?.data?.error === 'CSRF token validation failed') {
+            console.error('CSRF token validation failed');
+            // Optionally retry the request with a new CSRF token
+        }
+        if (error.response?.status === 401) {
             localStorage.removeItem('user');
             localStorage.removeItem('token');
-            // Use window.location instead of navigate outside component scope
-            window.location.href = '/login'; 
+            window.location.href = '/login';
         }
-        // Return the error response data or a structured error object
         return Promise.reject(error.response?.data || error.message || 'An API error occurred');
     }
 );
 
+// Update login function to fetch CSRF token first
 export const login = async (username, password) => {
-    console.log('[API Service] Sending login request:', { username, password: '********' }); // Hide password from log
+    console.log('[API] Starting login process...');
     try {
-        const response = await api.post('/auth/login', { username, password });
-        console.log('[API Service] Raw login response received from backend:', response);
-        if (response && response.user) {
-             console.log('[API Service] User object received within response:', response.user);
-        } else {
-             console.warn('[API Service] User object MISSING in login response!');
-        }
-        return response;
+        console.log('[API] Fetching CSRF token for login...');
+        const csrfToken = await fetchCsrfToken();
+        console.log('[API] CSRF token obtained:', csrfToken);
+        
+        const response = await axios.post(`${API_URL}/auth/login`, {
+            username,
+            password
+        }, {
+            headers: {
+                'X-CSRF-Token': csrfToken
+            },
+            withCredentials: true
+        });
+        console.log('[API] Login response:', response.data);
+        return response.data;
     } catch (error) {
-        console.error('Login error:', error);
-        if (error.message) {
-            throw new Error(error.message);
-        }
-        throw new Error('Invalid credentials');
+        console.error('[API] Login error:', error);
+        throw error;
     }
 };
 
@@ -902,6 +945,40 @@ export const getInstructorWorkloads = async () => {
         if (error instanceof Error) throw error;
         throw new Error('Failed to fetch instructor workload on the server.');
     }
+};
+
+export const resetPassword = async (token, newPassword) => {
+  try {
+    const response = await axios.post(`${API_URL}/auth/reset-password`, {
+      token,
+      newPassword
+    });
+    return response.data;
+  } catch (error) {
+    throw new Error(error.response?.data?.message || 'Failed to reset password');
+  }
+};
+
+export const requestPasswordReset = async (email) => {
+  try {
+    const response = await fetch(`${API_URL}/auth/request-password-reset`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ email }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.message || 'Failed to request password reset');
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Error requesting password reset:', error);
+    throw error;
+  }
 };
 
 export default api; 

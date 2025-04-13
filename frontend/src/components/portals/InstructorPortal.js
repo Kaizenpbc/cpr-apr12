@@ -26,6 +26,8 @@ import {
     Snackbar,
     AppBar,
     Toolbar,
+    Divider,
+    Alert,
 } from '@mui/material';
 import {
     CalendarToday as CalendarIcon,
@@ -33,6 +35,10 @@ import {
     AssignmentTurnedIn as AttendanceIcon,
     Archive as ArchiveIcon,
     Dashboard as DashboardIcon,
+    Person as StudentIcon,
+    Event as CourseIcon,
+    Logout as LogoutIcon,
+    VpnKey as PasswordIcon,
 } from '@mui/icons-material';
 import { formatDate, formatDisplayDate } from '../../utils/formatters';
 import ConfirmDialog from '../dialogs/ConfirmDialog';
@@ -543,6 +549,21 @@ const InstructorPortal = () => {
                         
                         <Divider sx={{ my: 1 }} />
 
+                        {/* Password Reset Item */}
+                        <ListItem 
+                            component="div"
+                            onClick={() => navigate('/reset-password')}
+                            sx={{ 
+                                cursor: 'pointer', 
+                                py: 1.5,
+                                '&:hover': { backgroundColor: 'action.hover'} 
+                            }}
+                        >
+                            <ListItemIcon><PasswordIcon /></ListItemIcon>
+                            <ListItemText primary="Reset Password" />
+                        </ListItem>
+
+                        {/* Logout Item */}
                         <ListItem 
                             component="div" 
                             onClick={handleLogout}

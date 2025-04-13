@@ -22,6 +22,7 @@ import {
     EditCalendar as ScheduleIcon,
     ListAlt as ListIcon,
     Logout as LogoutIcon,
+    VpnKey as PasswordIcon,
 } from '@mui/icons-material';
 import ScheduleCourseForm from '../forms/ScheduleCourseForm';
 import OrganizationCoursesTable from '../tables/OrganizationCoursesTable';
@@ -279,6 +280,21 @@ const OrganizationPortal = () => {
                         
                         <Divider sx={{ my: 1 }} />
 
+                        {/* Password Reset Item */}
+                        <ListItem 
+                            component="div"
+                            onClick={() => navigate('/reset-password')}
+                            sx={{ 
+                                cursor: 'pointer', 
+                                py: 1.5,
+                                '&:hover': { backgroundColor: 'action.hover'} 
+                            }}
+                        >
+                            <ListItemIcon><PasswordIcon /></ListItemIcon>
+                            <ListItemText primary="Reset Password" />
+                        </ListItem>
+
+                        {/* Logout Item */}
                         <ListItem 
                             component="div" 
                             onClick={handleLogout}

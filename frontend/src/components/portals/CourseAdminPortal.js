@@ -29,6 +29,7 @@ import {
     AssignmentTurnedIn as CompletedIcon, // Icon for Completed
     Assessment as ReportsIcon, // Add Reports icon
     Logout as LogoutIcon,
+    VpnKey as PasswordIcon,
 } from '@mui/icons-material';
 import * as api from '../../services/api';
 import InstructorDashboardTable from '../tables/InstructorDashboardTable';
@@ -866,6 +867,20 @@ const CourseAdminPortal = () => {
                         </ListItem>
 
                         <Divider sx={{ my: 1 }} />
+
+                        {/* Password Reset Item */}
+                        <ListItem 
+                            component="div"
+                            onClick={() => navigate('/reset-password')}
+                            sx={{ 
+                                cursor: 'pointer', 
+                                py: 1.5,
+                                '&:hover': { backgroundColor: 'action.hover'} 
+                            }}
+                        >
+                            <ListItemIcon><PasswordIcon /></ListItemIcon>
+                            <ListItemText primary="Reset Password" />
+                        </ListItem>
 
                         {/* Logout Item */}
                         <ListItem 

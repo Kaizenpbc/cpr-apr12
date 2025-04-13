@@ -1,7 +1,7 @@
-import React, { createContext, useState, useContext, useEffect, useRef, useCallback } from 'react';
+import React, { createContext, useState, useContext, useEffect, useRef, useCallback, useMemo } from 'react';
 import io from 'socket.io-client'; // Import socket.io-client
 import { jwtDecode } from 'jwt-decode'; // Import jwt-decode for decoding JWT
-import api from '../services/api'; // Import your API service
+import * as api from '../services/api'; // Import your API service
 
 const AuthContext = createContext(null);
 const SOCKET_URL = 'http://localhost:3001'; // Backend URL
@@ -12,6 +12,74 @@ export const AuthProvider = ({ children }) => {
     const [isLoading, setIsLoading] = useState(true);
     const [socket, setSocket] = useState(null);
     const socketRef = useRef(null); // Ref to store the socket instance
+
+    const logout = useCallback(() => {
+        console.log('[AuthContext] logout called');
+        disconnectSocket();
+        setUser(null);
+        setToken(null);
+        localStorage.removeItem('user');
+        localStorage.removeItem('token');
+    }, []);
+
+    const connectSocket = useCallback((userId) => {
+        if (!userId || socketRef.current) return; // Prevent connection if no user or already connected
+        
+        console.log(`[AuthContext] Attempting to connect socket for UserID: ${userId}`);
+        socketRef.current = io(SOCKET_URL, {
+            // Optional: Add authentication if needed later
+            // auth: { token: localStorage.getItem('token') }
+        });
+
+        socketRef.current.on('connect', () => {
+            console.log(`[AuthContext] Socket connected: ${socketRef.current.id}`);
+            // Identify the user to the backend
+            socketRef.current.emit('identify', userId);
+        });
+
+        socketRef.current.on('disconnect', (reason) => {
+            console.log(`[AuthContext] Socket disconnected: ${reason}`);
+            socketRef.current = null; // Clear ref on disconnect
+        });
+
+        socketRef.current.on('connect_error', (error) => {
+            console.error('[AuthContext] Socket connection error:', error);
+            // Handle connection error (e.g., show message to user)
+        });
+    }, []);
+
+    const disconnectSocket = useCallback(() => {
+        if (socketRef.current) {
+            console.log('[AuthContext] Disconnecting socket explicitly');
+            socketRef.current.disconnect();
+            socketRef.current = null;
+        }
+    }, []);
+
+    const login = useCallback(async (username, password) => {
+        console.log('[AuthContext] login function STARTED for username:', username);
+        try {
+            const response = await api.login(username, password);
+            if (response.success) {
+                const { user: userData, token: userToken } = response;
+                console.log('[AuthContext] login called with userData:', userData);
+                console.log('[AuthContext] login called with userToken:', userToken); // Log the JWT
+                setUser(userData);
+                setToken(userToken); // Set the JWT token
+                localStorage.setItem('user', JSON.stringify(userData));
+                localStorage.setItem('token', userToken); // Store JWT in localStorage
+                console.log('[AuthContext] State and localStorage updated. Current user state:', userData);
+                connectSocket(userData.userid);
+                return userData.role; // Return role for navigation
+            } else {
+                throw new Error(response.message || 'Login failed');
+            }
+        } catch (error) {
+            console.error('[AuthContext] Login API call error inside AuthContext:', error);
+            logout(); // Clear state on login error
+            throw error; // Re-throw for the Login component to handle
+        }
+    }, [connectSocket, logout]);
 
     useEffect(() => {
         const verifyToken = async () => {
@@ -37,7 +105,7 @@ export const AuthProvider = ({ children }) => {
             setIsLoading(false);
         };
         verifyToken();
-    }, []); // Run only once on mount
+    }, [logout, connectSocket]);
 
     useEffect(() => {
         const storedUser = localStorage.getItem('user');
@@ -62,80 +130,22 @@ export const AuthProvider = ({ children }) => {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []); // Run only on mount
 
-    const connectSocket = (userId) => {
-        if (!userId || socketRef.current) return; // Prevent connection if no user or already connected
-        
-        console.log(`[AuthContext] Attempting to connect socket for UserID: ${userId}`);
-        socketRef.current = io(SOCKET_URL, {
-            // Optional: Add authentication if needed later
-            // auth: { token: localStorage.getItem('token') }
-        });
+    const value = useMemo(() => ({
+        user,
+        token,
+        isLoading, // Add isLoading to context value
+        login,
+        logout,
+        socket // Expose socket if needed by consumers
+    }), [user, token, isLoading, login, logout, socket]);
 
-        socketRef.current.on('connect', () => {
-            console.log(`[AuthContext] Socket connected: ${socketRef.current.id}`);
-            // Identify the user to the backend
-            socketRef.current.emit('identify', userId);
-        });
+    // Don't render children until initial loading/verification is complete
+    // if (isLoading) { 
+    //     return <CircularProgress />; // Or some loading indicator
+    // }
 
-        socketRef.current.on('disconnect', (reason) => {
-            console.log(`[AuthContext] Socket disconnected: ${reason}`);
-            socketRef.current = null; // Clear ref on disconnect
-        });
-
-        socketRef.current.on('connect_error', (error) => {
-            console.error('[AuthContext] Socket connection error:', error);
-            // Handle connection error (e.g., show message to user)
-        });
-    };
-
-    const disconnectSocket = () => {
-         if (socketRef.current) {
-             console.log('[AuthContext] Disconnecting socket explicitly');
-             socketRef.current.disconnect();
-             socketRef.current = null;
-         }
-    };
-
-    const login = useCallback(async (username, password) => {
-        try {
-            const response = await api.login(username, password);
-            if (response.success) {
-                const { user: userData, token: userToken } = response;
-                console.log('[AuthContext] login called with userData:', userData);
-                console.log('[AuthContext] login called with userToken:', userToken); // Log the JWT
-                setUser(userData);
-                setToken(userToken); // Set the JWT token
-                localStorage.setItem('user', JSON.stringify(userData));
-                localStorage.setItem('token', userToken); // Store JWT in localStorage
-                console.log('[AuthContext] State and localStorage updated. Current user state:', userData);
-                connectSocket(userData.userid);
-                return userData.Role; // Return role for navigation
-            } else {
-                throw new Error(response.message || 'Login failed');
-            }
-        } catch (error) {
-            console.error('Login API call error:', error);
-            logout(); // Clear state on login error
-            throw error; // Re-throw for the Login component to handle
-        }
-    }, [connectSocket]);
-
-    const logout = useCallback(() => {
-        console.log('[AuthContext] logout called');
-        disconnectSocket();
-        setUser(null);
-        setToken(null);
-        localStorage.removeItem('user');
-        localStorage.removeItem('token'); // Remove JWT token
-    }, [disconnectSocket]);
-
-    if (isLoading) {
-        return null; // or a loading spinner
-    }
-
-    // Include socket in context value
     return (
-        <AuthContext.Provider value={{ user, token, login, logout, socket: socketRef.current }}>
+        <AuthContext.Provider value={value}>
             {children}
         </AuthContext.Provider>
     );

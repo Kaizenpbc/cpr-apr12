@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { ThemeProvider, createTheme } from '@mui/material';
 import { AuthProvider } from './contexts/AuthContext';
 import Login from './components/Login';
+import ForgotPassword from './components/ForgotPassword';
 import PrivateRoute from './components/PrivateRoute';
 import InstructorPortal from './components/portals/InstructorPortal';
 import OrganizationPortal from './components/portals/OrganizationPortal';
@@ -10,6 +11,8 @@ import CourseAdminPortal from './components/portals/CourseAdminPortal';
 import AccountingPortal from './components/portals/AccountingPortal';
 import SuperAdminPortal from './components/portals/SuperAdminPortal';
 import OrganizationDetailPage from './pages/OrganizationDetailPage';
+import PasswordReset from './components/PasswordReset';
+import PasswordResetRequest from './components/auth/PasswordResetRequest';
 
 const theme = createTheme({
   palette: {
@@ -30,6 +33,8 @@ function App() {
           <Routes>
             <Route path="/" element={<Login />} />
             <Route path="/login" element={<Login />} />
+            <Route path="/forgot-password" element={<ForgotPassword />} />
+            <Route path="/reset-password-request" element={<PasswordResetRequest />} />
             <Route
               path="/Instructor/*"
               element={
@@ -78,6 +83,11 @@ function App() {
                 </PrivateRoute>
               }
             />
+            <Route path="/reset-password" element={
+              <PrivateRoute>
+                <PasswordReset />
+              </PrivateRoute>
+            } />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </Router>
