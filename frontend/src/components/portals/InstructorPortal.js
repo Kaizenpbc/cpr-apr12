@@ -28,6 +28,10 @@ import {
     Toolbar,
     Divider,
     Alert,
+    CircularProgress,
+    Grid,
+    IconButton,
+    Tooltip
 } from '@mui/material';
 import {
     CalendarToday as CalendarIcon,
@@ -42,6 +46,13 @@ import {
 } from '@mui/icons-material';
 import { formatDate, formatDisplayDate } from '../../utils/formatters';
 import ConfirmDialog from '../dialogs/ConfirmDialog';
+
+// Import the missing components
+const InstructorDashboard = lazy(() => import('../views/InstructorDashboard'));
+const AvailabilityView = lazy(() => import('../views/AvailabilityView'));
+const MyClassesView = lazy(() => import('../views/instructor/MyClassesView'));
+const AttendanceView = lazy(() => import('../views/AttendanceView'));
+const InstructorArchiveTable = lazy(() => import('../tables/InstructorArchiveTable'));
 
 const drawerWidth = 240;
 
@@ -64,12 +75,16 @@ const ontarioHolidays2024 = new Set([
 const InstructorPortal = () => {
     const { user, logout, socket } = useAuth();
     const navigate = useNavigate();
-    const [selectedView, setSelectedView] = useState('dashboard');
+    const [selectedView, setSelectedView] = useState(() => {
+        return localStorage.getItem('lastSelectedView') || 'dashboard';
+    });
     const [selectedDate, setSelectedDate] = useState(null);
     const [showConfirmDialog, setShowConfirmDialog] = useState(false);
     const [confirmAction, setConfirmAction] = useState(null);
     const [availableDates, setAvailableDates] = useState([]);
     const [scheduledClasses, setScheduledClasses] = useState([]);
+    const [archivedCourses, setArchivedCourses] = useState([]);
+    const [availableDatesResult, setAvailableDatesResult] = useState(null);
     const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
     const [isLoading, setIsLoading] = useState(true);
     const [studentsForAttendance, setStudentsForAttendance] = useState([]);
@@ -77,10 +92,40 @@ const InstructorPortal = () => {
     const [studentsError, setStudentsError] = useState('');
     const [classToManage, setClassToManage] = useState(null);
     const [currentDate, setCurrentDate] = useState(new Date());
+    const [isLoadingArchive, setIsLoadingArchive] = useState(false);
+    const [archiveError, setArchiveError] = useState('');
 
     const showSnackbar = useCallback((message, severity = 'success') => {
         console.log('[showSnackbar] Setting snackbar state:', { open: true, message, severity });
         setSnackbar({ open: true, message, severity });
+    }, []);
+
+    const fetchScheduledClasses = useCallback(async () => {
+        try {
+            const response = await api.getInstructorSchedule();
+            setScheduledClasses(response);
+        } catch (error) {
+            console.error('Error fetching scheduled classes:', error);
+        }
+    }, []);
+
+    const fetchArchivedCourses = useCallback(async () => {
+        setIsLoadingArchive(true);
+        setArchiveError('');
+        try {
+            const response = await api.getCompletedClasses();
+            if (response.success) {
+                setArchivedCourses(response.courses);
+            } else {
+                throw new Error(response.message || 'Failed to fetch archived courses');
+            }
+        } catch (error) {
+            console.error('Error fetching archived courses:', error);
+            setArchiveError(error.message || 'Failed to fetch archived courses');
+            setArchivedCourses([]);
+        } finally {
+            setIsLoadingArchive(false);
+        }
     }, []);
 
     const loadInitialData = useCallback(async () => {
@@ -196,19 +241,16 @@ const InstructorPortal = () => {
         setClassToManage(null); 
         setStudentsError('');
 
-        // Only load data here that is EXCLUSIVE to a specific view
+        // Load data specific to the selected view
         if (selectedView === 'archive') {
-            loadInitialData();
+            fetchArchivedCourses();
         } else if (selectedView === 'attendance') {
-             // Auto-select class if only one scheduled
-             // The main data (scheduledClasses) should already be loaded by the first effect
-             if (scheduledClasses.length === 1) {
-                 console.log('[useEffect View Change] Auto-selecting the only scheduled class for attendance.');
-                 setClassToManage(scheduledClasses[0]);
-             }
+            if (scheduledClasses.length === 1) {
+                console.log('[useEffect View Change] Auto-selecting the only scheduled class for attendance.');
+                setClassToManage(scheduledClasses[0]);
+            }
         }
-        // Removed loadInitialData call from here - let the first useEffect handle it
-    }, [selectedView, loadInitialData, scheduledClasses]); // Removed loadInitialData from deps
+    }, [selectedView, fetchArchivedCourses, scheduledClasses]);
 
     useEffect(() => {
         if (classToManage) {
@@ -251,70 +293,108 @@ const InstructorPortal = () => {
         }
     };
 
-    const handleConfirmAction = async () => {
-        if (confirmAction === 'remove') {
-            try {
-                const response = await api.removeAvailability(selectedDate);
-                if (response.success) {
-                    console.log('[handleConfirmAction] api.removeAvailability succeeded. Refreshing data...');
-                    await loadInitialData(); 
-                    showSnackbar('Date removed from availability');
-                } else {
-                    throw new Error(response.message || 'API failed to remove availability');
-                }
-            } catch (error) {
-                console.error('Error removing availability:', error);
-                showSnackbar(error.message || 'Failed to remove availability. Please try again.', 'error');
-            }
+    const handleManageClassClick = (classId) => {
+        setClassToManage(classId);
+    };
+
+    const handleMarkCompleteClick = async (classId) => {
+        console.log(`[handleMarkCompleteClick] Marking class ${classId} as complete`);
+        try {
+            await api.markCourseCompleted(classId);
+            setSnackbar({
+                open: true,
+                message: 'Class marked as complete successfully',
+                severity: 'success'
+            });
+            fetchScheduledClasses();
+        } catch (error) {
+            console.error('Error marking class as complete:', error);
+            setSnackbar({
+                open: true,
+                message: 'Failed to mark class as complete',
+                severity: 'error'
+            });
         }
-        setShowConfirmDialog(false);
-        setSelectedDate(null);
-        setConfirmAction(null);
+    };
+
+    const handleAttendanceClick = (classId) => {
+        console.log(`[handleAttendanceClick] Class ID: ${classId}`);
+        setClassToManage(classId);
+        setSelectedView('attendance');
+    };
+
+    const handleClassChange = (event) => {
+        const classId = event.target.value;
+        const selectedClass = scheduledClasses.find(c => c.courseid === classId);
+        setClassToManage(selectedClass);
+        if (selectedClass) {
+            fetchStudentsForClass(selectedClass.courseid);
+        }
+    };
+
+    const handleConfirmAction = async () => {
+        if (!selectedDate) return;
+        
+        try {
+            if (confirmAction === 'remove') {
+                await api.removeAvailability(selectedDate);
+                setAvailableDates(prev => {
+                    const newSet = new Set(prev);
+                    newSet.delete(selectedDate);
+                    return newSet;
+                });
+                showSnackbar('Availability removed successfully');
+            }
+        } catch (error) {
+            console.error('Error handling availability:', error);
+            showSnackbar(error.message || 'Failed to update availability', 'error');
+        } finally {
+            setShowConfirmDialog(false);
+            setSelectedDate(null);
+            setConfirmAction(null);
+        }
     };
 
     const handlePreviousMonth = () => {
-        setCurrentDate(prevDate => new Date(prevDate.getFullYear(), prevDate.getMonth() - 1, 1));
+        setCurrentDate(prev => {
+            const newDate = new Date(prev);
+            newDate.setMonth(newDate.getMonth() - 1);
+            return newDate;
+        });
     };
 
     const handleNextMonth = () => {
-        setCurrentDate(prevDate => new Date(prevDate.getFullYear(), prevDate.getMonth() + 1, 1));
+        setCurrentDate(prev => {
+            const newDate = new Date(prev);
+            newDate.setMonth(newDate.getMonth() + 1);
+            return newDate;
+        });
     };
 
     const handleLogout = () => {
-        // Construct the message before logging out
-        const firstName = user?.firstname || 'Instructor'; // Use fallback name
-        const logoutMessage = `Bye ${firstName}, Keep Saving Lives!`;
-        showSnackbar(logoutMessage, 'info'); // Show the message
-        
-        // Perform logout actions after a short delay to allow snackbar to show (optional but nice UX)
-        setTimeout(() => {
-            logout();
-            navigate('/');
-        }, 1500); // Delay in milliseconds (adjust as needed)
+        logout();
+        navigate('/login');
     };
 
     const handleAttendanceChange = async (studentId, currentAttendance) => {
-        const newAttendance = !currentAttendance;
-        console.log(`Updating attendance for student ${studentId} to ${newAttendance}`);
-        
-        setStudentsForAttendance(prevStudents => 
-            prevStudents.map(s => s.studentid === studentId ? { ...s, attendance: newAttendance } : s)
-        );
+        if (!classToManage) return;
         
         try {
-            const response = await api.updateStudentAttendance(studentId, newAttendance);
-            if (!response.success) {
-                setStudentsForAttendance(prevStudents => 
-                    prevStudents.map(s => s.studentid === studentId ? { ...s, attendance: currentAttendance } : s)
-                );
-                showSnackbar(response.message || 'Failed to update attendance', 'error');
-            }
-        } catch (err) {
-            setStudentsForAttendance(prevStudents => 
-                prevStudents.map(s => s.studentid === studentId ? { ...s, attendance: currentAttendance } : s)
+            const newAttendance = !currentAttendance; // Toggle boolean value
+            await api.updateStudentAttendance(studentId, newAttendance);
+            
+            setStudentsForAttendance(prev => 
+                prev.map(student => 
+                    student.studentid === studentId 
+                        ? { ...student, attendance: newAttendance }
+                        : student
+                )
             );
-            showSnackbar(err.message || 'Error updating attendance', 'error');
-            console.error('Attendance update error:', err);
+            
+            showSnackbar('Attendance updated successfully');
+        } catch (error) {
+            console.error('Error updating attendance:', error);
+            showSnackbar(error.message || 'Failed to update attendance', 'error');
         }
     };
 
@@ -331,17 +411,28 @@ const InstructorPortal = () => {
                     ...course,
                     type: 'class',
                     sortDate: new Date(course.datescheduled || 0), 
-                    displayDate: formatDisplayDate(scheduledIsoDate), 
-                    key: `class-${course.courseid}` 
+                    displayDate: formatDisplayDate(scheduledIsoDate),
+                    key: `class-${course.courseid}`,
+                    status: course.completed ? 'Completed' : 'Scheduled',
+                    organizationname: course.organizationname || '-',
+                    coursetypename: course.coursetypename || '-',
+                    location: course.location || '-',
+                    studentcount: course.studentcount || 0
                 };
             }),
             ...availabilityDatesArray.map(dateString => { 
+                const displayDate = formatDisplayDate(dateString);
                 return {
                     type: 'availability',
                     sortDate: new Date(dateString), 
-                    displayDate: formatDisplayDate(dateString), 
+                    displayDate: displayDate,
                     dateString: dateString,
-                    key: `avail-${dateString}` 
+                    key: `avail-${dateString}`,
+                    status: 'AVAILABLE',
+                    organizationname: '-',
+                    coursetypename: '-',
+                    location: '-',
+                    studentcount: '-'
                 };
             })
         ];
@@ -349,41 +440,59 @@ const InstructorPortal = () => {
         return combined;
     }, [scheduledClasses, availableDates]);
 
+    const handleViewChange = (view) => {
+        setSelectedView(view);
+        localStorage.setItem('lastSelectedView', view);
+    };
+
     const renderSelectedView = () => {
-        console.log(`[renderSelectedView] Rendering view: ${selectedView}`);
         switch (selectedView) {
             case 'dashboard':
-                return <InstructorDashboard scheduledClasses={scheduledClasses} />;
+                return <InstructorDashboard />;
             case 'availability':
-                return <AvailabilityView 
-                            currentDate={currentDate}
-                            handlePreviousMonth={handlePreviousMonth}
-                            handleNextMonth={handleNextMonth}
-                            availableDates={availableDates}
-                            scheduledClasses={scheduledClasses}
-                            ontarioHolidays2024={ontarioHolidays2024}
-                            handleDateClick={handleDateClick}
-                       />;
+                return (
+                    <AvailabilityView
+                        availableDates={availableDates}
+                        scheduledClasses={scheduledClasses}
+                        ontarioHolidays2024={ontarioHolidays2024}
+                        handleDateClick={handleDateClick}
+                        currentDate={currentDate}
+                        handlePreviousMonth={handlePreviousMonth}
+                        handleNextMonth={handleNextMonth}
+                    />
+                );
             case 'classes':
-                return <MyClassesView 
-                            combinedItems={combinedItems}
-                            onAttendanceClick={handleAttendanceClick} // Pass handler
-                       />;
+                return (
+                    <MyClassesView
+                        combinedItems={combinedItems}
+                        onAttendanceClick={handleAttendanceClick}
+                    />
+                );
             case 'attendance':
-                return <AttendanceView 
-                            scheduledClasses={scheduledClasses}
-                            classToManage={classToManage}
-                            handleClassChange={handleClassChange}
-                            studentsForAttendance={studentsForAttendance}
-                            handleAttendanceChange={handleAttendanceChange}
-                            isLoadingStudents={isLoadingStudents}
-                            studentsError={studentsError}
-                            handleMarkCompleteClick={handleMarkCompleteClick}
-                       />;
+                return (
+                    <AttendanceView
+                        scheduledClasses={scheduledClasses}
+                        classToManage={classToManage}
+                        studentsForAttendance={studentsForAttendance}
+                        isLoadingStudents={isLoadingStudents}
+                        studentsError={studentsError}
+                        handleClassChange={handleClassChange}
+                        handleAttendanceChange={handleAttendanceChange}
+                        handleMarkCompleteClick={handleMarkCompleteClick}
+                    />
+                );
             case 'archive':
-                return <InstructorArchiveTable courses={archivedCourses} />;
+                return isLoadingArchive ? (
+                    <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
+                        <CircularProgress />
+                    </Box>
+                ) : archiveError ? (
+                    <Alert severity="error">{archiveError}</Alert>
+                ) : (
+                    <InstructorArchiveTable courses={archivedCourses} />
+                );
             default:
-                return <Typography>Select a view</Typography>;
+                return <InstructorDashboard />;
         }
     };
 
@@ -428,18 +537,16 @@ const InstructorPortal = () => {
                     '& .MuiDrawer-paper': {
                         width: drawerWidth,
                         boxSizing: 'border-box',
-                        // Removed mt: 8 - Toolbar adds offset
                     },
                 }}
             >
-                {/* Toolbar spacer to push content below AppBar */}
-                <Toolbar /> 
+                <Toolbar />
                 <Box sx={{ overflow: 'auto' }}> 
                     <List>
                         <ListItem 
                             component="div"
                             selected={selectedView === 'dashboard'}
-                            onClick={() => setSelectedView('dashboard')}
+                            onClick={() => handleViewChange('dashboard')}
                             sx={{
                                 cursor: 'pointer', 
                                 py: 1.5, 
@@ -461,7 +568,7 @@ const InstructorPortal = () => {
                         <ListItem 
                             component="div"
                             selected={selectedView === 'availability'}
-                            onClick={() => setSelectedView('availability')}
+                            onClick={() => handleViewChange('availability')}
                             sx={{
                                 cursor: 'pointer', 
                                 py: 1.5, 
@@ -483,8 +590,8 @@ const InstructorPortal = () => {
                         <ListItem 
                             component="div"
                             selected={selectedView === 'classes'}
-                            onClick={() => setSelectedView('classes')}
-                             sx={{
+                            onClick={() => handleViewChange('classes')}
+                            sx={{
                                 cursor: 'pointer', 
                                 py: 1.5, 
                                 backgroundColor: selectedView === 'classes' ? 'primary.light' : 'transparent',
@@ -503,10 +610,10 @@ const InstructorPortal = () => {
                             <ListItemText primary="My Classes" />
                         </ListItem>
                         <ListItem 
-                            component="div" 
+                            component="div"
                             selected={selectedView === 'attendance'}
-                            onClick={() => setSelectedView('attendance')}
-                             sx={{
+                            onClick={() => handleViewChange('attendance')}
+                            sx={{
                                 cursor: 'pointer', 
                                 py: 1.5, 
                                 backgroundColor: selectedView === 'attendance' ? 'primary.light' : 'transparent',
@@ -525,10 +632,10 @@ const InstructorPortal = () => {
                             <ListItemText primary="Attendance" />
                         </ListItem>
                         <ListItem 
-                            component="div" 
+                            component="div"
                             selected={selectedView === 'archive'}
-                            onClick={() => setSelectedView('archive')}
-                             sx={{
+                            onClick={() => handleViewChange('archive')}
+                            sx={{
                                 cursor: 'pointer', 
                                 py: 1.5, 
                                 backgroundColor: selectedView === 'archive' ? 'primary.light' : 'transparent',
